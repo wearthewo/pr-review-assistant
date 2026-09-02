@@ -24,6 +24,8 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <project.build.outputTimestamp>2026-09-02T00:00:00Z</project.build.outputTimestamp>
         <testcontainers.version>2.0.5</testcontainers.version>
+        <nimbus-jose-jwt.version>10.9.1</nimbus-jose-jwt.version>
+        <bouncycastle.version>1.85</bouncycastle.version>
     </properties>
 
     <dependencyManagement>
@@ -67,6 +69,16 @@
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+            <version>${nimbus-jose-jwt.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <version>${bouncycastle.version}</version>
         </dependency>
 
         <dependency>

@@ -30,6 +30,15 @@ This document defines required controls. Concrete libraries, schemas, thresholds
 - Rotate credentials and support revocation. Treat any exposed token as compromised and investigate its use.
 - Logs should contain opaque identifiers, decisions, timings, sizes, and error classes—not authorization headers, raw payloads, prompts, model responses, or source code unless a narrowly approved diagnostic path explicitly requires redacted content.
 
+### GitHub App authentication controls implemented in M2
+
+- The App private key is supplied as a protected PEM file path, not multiline YAML. GitHub PKCS#1 RSA keys and PKCS#8 keys are parsed by maintained cryptographic libraries; key material is never placed in messages or value-object string representations.
+- App JWTs use RS256 only, an issued-at time 60 seconds in the past, and an expiration nine minutes after the current clock reading. JWTs are used only to request installation tokens and are never logged.
+- Installation tokens are opaque secrets. Code does not inspect their prefix, length, or shape, and does not persist them. Tokens are cached by installation ID with an expiry safety window and cannot be returned after expiration.
+- Installation ID is explicit per operation. It is not a process-wide credential and must eventually be derived from authenticated tenant context when that context exists.
+- Authorization headers and GitHub response bodies are excluded from application-generated errors. Actuator exposes no GitHub credential or GitHub health detail.
+- The process-local cache coalesces refreshes for one installation while isolating cache keys between installations. Cross-instance coordination is deferred; each instance may independently request a token.
+
 ## Untrusted repository and model content
 
 - Treat diffs, source files, paths, comments, commit messages, metadata, generated files, encodings, and archives as malicious input.

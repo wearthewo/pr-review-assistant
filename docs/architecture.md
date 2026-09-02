@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids implementation-level class, package, endpoint, schema, deployment, and algorithm design. At M1, only the minimal Spring Boot backend runtime and local PostgreSQL foundation exist; the review pipeline components remain unimplemented.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids implementation-level class, package, endpoint, schema, deployment, and algorithm design. At M2, the minimal Spring Boot/PostgreSQL foundation and internal GitHub App authentication boundary exist; the webhook and review pipeline components remain unimplemented.
 
 ## System context
 
@@ -42,7 +42,7 @@ Claims durable jobs, orchestrates the review pipeline, records bounded progress 
 
 ### GitHub integration
 
-Creates short-lived installation credentials, retrieves the minimum authorized pull request context, observes API budgets, and publishes reviews. GitHub payloads and content are translated and validated at this boundary. GitHub-specific types do not define the domain model.
+Creates short-lived installation credentials, retrieves the minimum authorized context, observes API budgets, and will eventually publish reviews. M2 implements only App JWT creation, installation-token exchange/cache, and a narrow read-only accessible-repository operation. Installation identity is supplied per operation, and credentials never leave this server-side boundary. GitHub payloads and content are translated and validated here; GitHub-specific types do not define the domain model.
 
 ### Deterministic analysis
 
@@ -66,7 +66,7 @@ Will provide tenant administrators with configuration, status, and operational v
 
 ### Infrastructure and delivery
 
-Defines PostgreSQL-only local infrastructure for the backend foundation. It will add CI checks and deployment concerns only when required by a later milestone. Infrastructure does not own product rules. No CI workflow or deployment platform choice exists at M1.
+Defines PostgreSQL-only local infrastructure for the backend foundation. It will add CI checks and deployment concerns only when required by a later milestone. Infrastructure does not own product rules. No additional service, CI workflow, or deployment platform choice exists at M2.
 
 ## Domain and dependency direction
 
@@ -84,7 +84,7 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The backend foundation is currently one Spring Boot application with Actuator health and database initialization only. The planned backend still contains logically separate API and worker responsibilities; whether they run as separate processes is a later operational decision and must not weaken their boundary. PostgreSQL is shared durable state. The frontend will be a separate web application. Exact hosting, topology, scaling, and network design are intentionally deferred until requirements are demonstrated.
+The backend foundation is currently one Spring Boot application with Actuator health, database initialization, and process-local GitHub authentication infrastructure. Installation tokens are cached only within the process; multi-instance cache coordination is deferred. The planned backend still contains logically separate API and worker responsibilities; whether they run as separate processes is a later operational decision and must not weaken their boundary. PostgreSQL is shared durable state, but M2 stores no GitHub credentials or installations there. The frontend will be a separate web application. Exact hosting, topology, scaling, and network design are intentionally deferred until requirements are demonstrated.
 
 ## Decision records
 

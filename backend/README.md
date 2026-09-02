@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend foundation. It currently provides application startup, PostgreSQL connectivity, Flyway initialization, Hibernate schema validation, and the Actuator health endpoint. It contains no controllers, domain model, business behavior, GitHub integration, job processing, or AI integration.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend foundation. It provides application startup, PostgreSQL connectivity, Flyway initialization, Hibernate schema validation, Actuator health, and an internal GitHub App authentication/client boundary. It contains no controllers, webhook handling, persisted domain model, pull request processing, job processing, review publishing, or AI integration.
 
 ## Requirements
 
@@ -46,3 +46,17 @@ Check readiness at `http://localhost:8080/actuator/health`. Only the health Actu
 On Windows, run `.\mvnw.cmd clean verify`. Integration tests start their own pinned PostgreSQL container and do not use the local Compose database.
 
 Flyway is enabled, but M1 has no migration files because no domain schema exists. Hibernate uses `ddl-auto: validate` and never creates or updates the schema.
+
+## GitHub App authentication
+
+M2 requires these server-side values:
+
+- `GITHUB_APP_ID`: the GitHub App ID (GitHub also permits a client ID as the JWT issuer, but M2 names and documents the App ID);
+- `GITHUB_PRIVATE_KEY_PATH`: path to a mounted or otherwise protected PEM private-key file;
+- `GITHUB_API_BASE_URL`: optional override, defaulting to `https://api.github.com`, primarily for controlled tests and GitHub Enterprise compatibility.
+
+GitHub downloads App keys as PKCS#1 RSA PEM files; both that format and PKCS#8 PEM are supported. Keep the PEM outside the repository, restrict filesystem access to the backend identity, and point `.env` at it for local development. The key file is loaded only when a JWT is needed and its content is never logged or included in errors.
+
+The backend signs a short-lived RS256 App JWT, exchanges it for an installation token, and caches that opaque token by operation-supplied installation ID. A five-minute refresh window prevents use near expiry, and concurrent refreshes for the same installation share one request. The cache is process-local; distributed coordination and Redis are intentionally deferred until multi-instance requirements demonstrate a need.
+
+The only M2 GitHub operation is the internal, read-only accessible-repository count used to prove the boundary. There is no public controller or live-GitHub dependency in automated tests.

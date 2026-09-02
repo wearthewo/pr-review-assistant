@@ -24,3 +24,12 @@ management:
   health:
     db:
       enabled: true
+
+github:
+  app:
+    id: ${GITHUB_APP_ID}
+    private-key-path: ${GITHUB_PRIVATE_KEY_PATH}
+    api-base-url: ${GITHUB_API_BASE_URL:https://api.github.com}
+    connect-timeout: 5s
+    request-timeout: 20s
+    token-refresh-skew: 5m
