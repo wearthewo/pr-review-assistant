@@ -2,7 +2,7 @@
 
 ## Current state
 
-The repository is at Milestone M2. The backend is a minimal Java 21 and Spring Boot 4.1.1 application with PostgreSQL connectivity, Flyway, JPA schema validation, Actuator health, Testcontainers tests, and internal GitHub App authentication infrastructure. Local infrastructure contains PostgreSQL only. There is no webhook endpoint, review functionality, domain schema, frontend, OpenAPI specification, worker, AI integration, or CI/CD workflow.
+The repository is at Milestone M3. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL connectivity, Flyway, JPA schema validation, Actuator health, Testcontainers tests, internal GitHub App authentication, and secure durable webhook ingestion. Local infrastructure contains PostgreSQL only. There is no review processing, review job/worker, tenant schema, frontend, OpenAPI specification, AI integration, or CI/CD workflow.
 
 ## Prerequisites
 
@@ -65,13 +65,17 @@ Common configuration is in `backend/src/main/resources/application.yml`. The loc
 
 GitHub App authentication additionally requires `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY_PATH`. `GITHUB_API_BASE_URL` defaults to GitHub's public API and is overridable for tests or compatible enterprise deployments. Installation ID is not global configuration; each internal operation supplies it because one App serves many installations.
 
+Webhook ingestion separately requires `GITHUB_WEBHOOK_SECRET`, set to the same random, high-entropy value configured for the GitHub App webhook. It is not the App private key. `GITHUB_WEBHOOK_MAX_BODY_SIZE` defaults to `1MB`; values must be positive and no greater than GitHub's 25 MiB cap. Keep both credentials outside source control and do not print them. Actuator exposes only health and contains no GitHub credential details.
+
 For local development, download a private key from the GitHub App settings, store it outside this repository with access restricted to your account, and set `GITHUB_PRIVATE_KEY_PATH` in the ignored `.env` to its absolute path. GitHub-generated PKCS#1 PEM and PKCS#8 PEM are accepted. Do not paste PEM content into YAML or `.env`, commit it, print it, or pass it to tests. The repository's `*.pem` ignore rule is defense in depth, not permission to store keys here.
 
 Automated tests use generated ephemeral RSA keys and a loopback HTTP server; they never contact GitHub. A real GitHub smoke test is optional only when an operator has explicitly configured an App and installation. Never request or substitute a personal access token.
 
 ## Database evolution
 
-Flyway is enabled and is the sole schema migration mechanism. M1 has no migration because there are no business tables. Hibernate is configured with `ddl-auto: validate`; it cannot create or update the schema. Add a new versioned migration for every future schema change and never edit a migration that may have run outside a disposable local environment. Integration tests run Flyway against PostgreSQL through Testcontainers.
+Flyway is enabled and is the sole schema migration mechanism. M3's V1 migration creates the minimal `github_webhook_deliveries` table with a database-unique GitHub delivery ID. The payload is raw validated UTF-8 JSON text, which preserves the accepted representation for audit and future event processing; JSONB was deferred because it normalizes whitespace and object-key order. Signature verification always occurs against request bytes before text decoding or JSON parsing. Hibernate is configured with `ddl-auto: validate`; it cannot create or update the schema. Add a new versioned migration for every future schema change and never edit a migration that may have run outside a disposable local environment. Integration tests run Flyway against PostgreSQL through Testcontainers.
+
+The endpoint returns `202` for both new and duplicate valid deliveries, `400` for malformed metadata or JSON, `401` for any missing, malformed, or invalid signature, `413` for an oversized body, `415` for unsupported media types, and `5xx` when durable storage fails. Error bodies are empty. PostgreSQL `ON CONFLICT DO NOTHING`, backed by the unique constraint, handles concurrent redelivery without a select/insert race.
 
 ## Troubleshooting and completion
 

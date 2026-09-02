@@ -9,7 +9,8 @@ import org.springframework.context.annotation.Import;
         "DB_USERNAME=test",
         "DB_PASSWORD=test",
         "GITHUB_APP_ID=test-app-id",
-        "GITHUB_PRIVATE_KEY_PATH=unused-test-key.pem"
+        "GITHUB_PRIVATE_KEY_PATH=unused-test-key.pem",
+        "GITHUB_WEBHOOK_SECRET=test-webhook-secret-with-entropy"
 })
 @Import(PostgreSqlTestConfiguration.class)
 class PrReviewAssistantApplicationTest {

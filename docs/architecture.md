@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids implementation-level class, package, endpoint, schema, deployment, and algorithm design. At M2, the minimal Spring Boot/PostgreSQL foundation and internal GitHub App authentication boundary exist; the webhook and review pipeline components remain unimplemented.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class- and algorithm-level design. At M3, the Spring Boot/PostgreSQL foundation, internal GitHub App authentication boundary, and durable webhook-ingestion boundary exist; the review pipeline remains unimplemented.
 
 ## System context
 
@@ -26,7 +26,7 @@ GitHub
 
 ### Webhook ingestion
 
-Terminates GitHub webhook requests, preserves the raw body for signature verification, rejects invalid or oversized requests, identifies the installation tenant, deduplicates deliveries, and hands accepted events to the application boundary. It does not perform a pull request review during the request.
+Terminates GitHub webhook requests, bounds the raw request body, authenticates its exact bytes, validates minimum envelope metadata and JSON syntax, and durably deduplicates accepted delivery IDs. M3 stores the original accepted UTF-8 JSON text and returns without event-specific parsing, installation/tenant resolution, job creation, GitHub API calls, or review work. Installation identity and tenant resolution belong to future authenticated processing, not ingress trust decisions.
 
 ### API and application boundary
 
@@ -66,7 +66,7 @@ Will provide tenant administrators with configuration, status, and operational v
 
 ### Infrastructure and delivery
 
-Defines PostgreSQL-only local infrastructure for the backend foundation. It will add CI checks and deployment concerns only when required by a later milestone. Infrastructure does not own product rules. No additional service, CI workflow, or deployment platform choice exists at M2.
+Defines PostgreSQL-only local infrastructure for the backend. It will add CI checks and deployment concerns only when required by a later milestone. Infrastructure does not own product rules. No additional service, CI workflow, or deployment platform choice exists at M3.
 
 ## Domain and dependency direction
 
@@ -84,7 +84,7 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The backend foundation is currently one Spring Boot application with Actuator health, database initialization, and process-local GitHub authentication infrastructure. Installation tokens are cached only within the process; multi-instance cache coordination is deferred. The planned backend still contains logically separate API and worker responsibilities; whether they run as separate processes is a later operational decision and must not weaken their boundary. PostgreSQL is shared durable state, but M2 stores no GitHub credentials or installations there. The frontend will be a separate web application. Exact hosting, topology, scaling, and network design are intentionally deferred until requirements are demonstrated.
+The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication infrastructure, and the webhook endpoint. Installation tokens are cached only within the process; multi-instance cache coordination is deferred. The planned backend still contains logically separate API and worker responsibilities; whether they run as separate processes is a later operational decision and must not weaken their boundary. PostgreSQL stores accepted webhook envelopes but no GitHub credentials, installations, tenants, or review jobs. The frontend will be a separate web application. Exact hosting, topology, scaling, and network design are intentionally deferred until requirements are demonstrated.
 
 ## Decision records
 

@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. Milestone M2 adds the internal GitHub App authentication foundation; webhook and review functionality are not implemented.
+> Project status: **pre-alpha**. Milestone M3 adds secure, durable GitHub webhook ingestion; review processing is not implemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -33,7 +33,7 @@ The API and worker are logical components of the backend. PostgreSQL is the init
 - OpenAPI
 - OpenAI behind an internal provider abstraction
 
-The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, and a narrow GitHub App authentication client. The frontend and delivery pipeline remain uninitialized.
+The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App authentication client, and a signed webhook-ingestion endpoint. The frontend and review pipeline remain uninitialized.
 
 ## Repository layout
 
@@ -82,8 +82,8 @@ cd backend
 
 On Windows PowerShell, use `Copy-Item .env.example .env` and run `mvnw.cmd` from `backend`.
 
-After startup, `GET http://localhost:8080/actuator/health` is the only intentionally exposed operational endpoint. See [docs/development.md](docs/development.md) for exact test and shutdown commands.
+After startup, `GET http://localhost:8080/actuator/health` is the operational endpoint. `POST http://localhost:8080/api/webhooks/github` is the GitHub boundary and authenticates requests with `X-Hub-Signature-256`. See [docs/development.md](docs/development.md) for configuration, test, and shutdown commands.
 
 ## Current milestone
 
-M2 adds RS256 GitHub App JWT generation, installation-token exchange and in-memory reuse, explicit GitHub error classification, and one internal read-only operation that lists the accessible repository count. Installation ID is supplied per operation and tokens remain server-side. Webhooks, persisted installations or tenants, review jobs, workers, pull request processing, publishing, AI integration, frontend initialization, OpenAPI documents, and CI/CD remain deferred.
+M3 adds `POST /api/webhooks/github`, exact-byte HMAC-SHA256 verification, bounded envelope validation, strict JSON validation, and durable idempotent delivery storage. Both new and duplicate valid deliveries return `202 Accepted`; no downstream review work occurs in the request. Persisted installations or tenants, review jobs, workers, pull request processing, publishing, AI integration, frontend initialization, OpenAPI documents, and CI/CD remain deferred.

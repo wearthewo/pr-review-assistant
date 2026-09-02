@@ -4,7 +4,7 @@
 
 Testing must provide confidence in behavior, boundaries, tenant isolation, idempotency, retry safety, concurrency, provider contracts, and safe failure. Tests should be deterministic, readable, and proportionate to risk. The default suite must not depend on live GitHub, a live AI provider, or developer-owned infrastructure.
 
-M1 establishes a Spring context test and a PostgreSQL Testcontainers integration test for the backend foundation. M2 adds deterministic JWT/key-format tests, loopback GitHub HTTP contract tests, cache concurrency tests, and secret-regression assertions. The remaining categories below become requirements as corresponding behavior is implemented.
+M1 establishes a Spring context test and a PostgreSQL Testcontainers integration test for the backend foundation. M2 adds deterministic JWT/key-format tests, loopback GitHub HTTP contract tests, cache concurrency tests, and secret-regression assertions. M3 adds exact-byte webhook signature and HTTP contract tests plus PostgreSQL migration, persistence, uniqueness, and synchronized duplicate-delivery concurrency tests. The remaining categories below become requirements as corresponding behavior is implemented.
 
 ## Test layers
 
@@ -32,7 +32,7 @@ Provider contract tests use fakes or controlled mock servers by default. Optiona
 
 ### Webhook fixture tests
 
-Keep sanitized, synthetic fixtures for supported GitHub event variants. Test signature verification using known test secrets and exact raw bytes; malformed signatures; missing fields; unsupported actions; altered bodies; duplicate delivery IDs; reordered or additional fields; unusual encodings; and configured size limits. Fixtures must contain no real tenant source code or credentials.
+Keep sanitized, synthetic fixtures for supported GitHub event variants. M3 tests the official GitHub HMAC vector, known test secrets and exact raw bytes, malformed/missing/SHA-1 signatures, altered and byte-reformatted bodies, Unicode/invalid encoding, duplicate delivery IDs, malformed JSON, bounded headers, and configured size limits. Future event processing must add fixtures for supported actions, reordered/additional fields, and schema variants. Fixtures must contain no real tenant source code or credentials.
 
 ### Concurrency tests
 

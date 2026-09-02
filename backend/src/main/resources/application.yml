@@ -33,3 +33,6 @@ github:
     connect-timeout: 5s
     request-timeout: 20s
     token-refresh-skew: 5m
+  webhook:
+    secret: ${GITHUB_WEBHOOK_SECRET}
+    max-body-size: ${GITHUB_WEBHOOK_MAX_BODY_SIZE:1MB}
