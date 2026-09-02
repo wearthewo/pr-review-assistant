@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids implementation-level class, package, endpoint, schema, deployment, and algorithm design. The repository is at M0: none of these runtime components exists yet.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids implementation-level class, package, endpoint, schema, deployment, and algorithm design. At M1, only the minimal Spring Boot backend runtime and local PostgreSQL foundation exist; the review pipeline components remain unimplemented.
 
 ## System context
 
@@ -66,7 +66,7 @@ Will provide tenant administrators with configuration, status, and operational v
 
 ### Infrastructure and delivery
 
-Will define reproducible local dependencies, CI checks, and deployment concerns when required by a milestone. Infrastructure does not own product rules. No Compose services, CI workflows, or deployment platform choices are introduced in M0.
+Defines PostgreSQL-only local infrastructure for the backend foundation. It will add CI checks and deployment concerns only when required by a later milestone. Infrastructure does not own product rules. No CI workflow or deployment platform choice exists at M1.
 
 ## Domain and dependency direction
 
@@ -84,7 +84,7 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The planned backend contains logically separate API and worker responsibilities. Whether they run as separate processes is a later operational decision and must not weaken their boundary. PostgreSQL is shared durable state. The frontend is a separate web application. Exact hosting, topology, scaling, and network design are intentionally deferred until requirements are demonstrated.
+The backend foundation is currently one Spring Boot application with Actuator health and database initialization only. The planned backend still contains logically separate API and worker responsibilities; whether they run as separate processes is a later operational decision and must not weaken their boundary. PostgreSQL is shared durable state. The frontend will be a separate web application. Exact hosting, topology, scaling, and network design are intentionally deferred until requirements are demonstrated.
 
 ## Decision records
 

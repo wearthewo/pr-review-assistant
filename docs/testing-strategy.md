@@ -4,7 +4,7 @@
 
 Testing must provide confidence in behavior, boundaries, tenant isolation, idempotency, retry safety, concurrency, provider contracts, and safe failure. Tests should be deterministic, readable, and proportionate to risk. The default suite must not depend on live GitHub, a live AI provider, or developer-owned infrastructure.
 
-M0 contains no executable application, so it introduces no test framework or placeholder tests. The categories below become requirements as corresponding behavior is implemented.
+M1 establishes a Spring context test and a PostgreSQL Testcontainers integration test for the backend foundation. The remaining categories below become requirements as corresponding behavior is implemented.
 
 ## Test layers
 
