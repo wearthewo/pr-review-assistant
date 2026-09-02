@@ -16,7 +16,7 @@ This document defines required controls. Concrete libraries, schemas, thresholds
 
 ## Replay, idempotency, and job safety
 
-- Record the GitHub delivery identifier within the appropriate tenant/installation scope and enforce deduplication atomically.
+- Record the globally unique GitHub delivery identifier atomically at ingress. Future tenant-scoped processing must additionally carry verified installation/tenant context without weakening this global delivery deduplication.
 - Treat GitHub redelivery and repeated event delivery as normal. Duplicate delivery must not create duplicate review jobs or reviews.
 - Queue consumers must tolerate at-least-once execution, crashes, lease expiry, and partial external success.
 - Use explicit job state transitions, bounded retries, backoff, terminal failure handling, and idempotency keys for publication.
@@ -38,6 +38,16 @@ This document defines required controls. Concrete libraries, schemas, thresholds
 - Installation ID is explicit per operation. It is not a process-wide credential and must eventually be derived from authenticated tenant context when that context exists.
 - Authorization headers and GitHub response bodies are excluded from application-generated errors. Actuator exposes no GitHub credential or GitHub health detail.
 - The process-local cache coalesces refreshes for one installation while isolating cache keys between installations. Cross-instance coordination is deferred; each instance may independently request a token.
+
+### GitHub webhook controls implemented in M3
+
+- `POST /api/webhooks/github` accepts JSON only and authenticates with `X-Hub-Signature-256`; session authentication, user agent, and legacy SHA-1 signatures grant no trust.
+- The configured high-entropy webhook secret is separate from the App private key. It has no default, is never persisted or logged, and is redacted from configuration string representations and errors.
+- The request body is read with a bounded allocation (1 MiB by default), and both declared and actual byte counts are enforced before parsing. The configured ceiling cannot exceed GitHub's 25 MiB payload cap.
+- HMAC-SHA256 is computed over the exact received bytes and compared in constant time. Only after successful verification are bounded delivery/event headers and exactly one valid UTF-8 JSON value accepted.
+- Accepted raw JSON text is stored without routine logging. Error responses are empty and never echo signatures, secrets, payloads, or internal exception detail.
+- GitHub delivery ID is an opaque idempotency key. A PostgreSQL unique constraint and conflict-safe insert prevent concurrent duplicates, and the insert commits before `202 Accepted` is returned.
+- M3 does not parse installation identity, create tenant state or review work, call GitHub, persist credentials, or process event-specific content.
 
 ## Untrusted repository and model content
 
