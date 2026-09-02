@@ -2,7 +2,7 @@
 
 ## Current state
 
-The repository is at Milestone M1. The backend is a minimal Java 21 and Spring Boot 4.1.1 application with PostgreSQL connectivity, Flyway, JPA schema validation, Actuator health, and Testcontainers tests. Local infrastructure contains PostgreSQL only. There is no review functionality, domain schema, frontend, OpenAPI specification, GitHub integration, worker, AI integration, or CI/CD workflow.
+The repository is at Milestone M2. The backend is a minimal Java 21 and Spring Boot 4.1.1 application with PostgreSQL connectivity, Flyway, JPA schema validation, Actuator health, Testcontainers tests, and internal GitHub App authentication infrastructure. Local infrastructure contains PostgreSQL only. There is no webhook endpoint, review functionality, domain schema, frontend, OpenAPI specification, worker, AI integration, or CI/CD workflow.
 
 ## Prerequisites
 
@@ -62,6 +62,12 @@ On Windows, use `.\mvnw.cmd clean verify`. The test suite starts a pinned Postgr
 ## Configuration principles
 
 Common configuration is in `backend/src/main/resources/application.yml`. The local profile in `application-local.yml` imports the ignored root `.env` file. Non-local environments inject `DB_JDBC_URL`, `DB_USERNAME`, and `DB_PASSWORD` directly. Required values have no application defaults, so missing database configuration fails startup instead of selecting an embedded database. Secrets must never be committed, logged, exposed to the frontend, or passed to AI models.
+
+GitHub App authentication additionally requires `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY_PATH`. `GITHUB_API_BASE_URL` defaults to GitHub's public API and is overridable for tests or compatible enterprise deployments. Installation ID is not global configuration; each internal operation supplies it because one App serves many installations.
+
+For local development, download a private key from the GitHub App settings, store it outside this repository with access restricted to your account, and set `GITHUB_PRIVATE_KEY_PATH` in the ignored `.env` to its absolute path. GitHub-generated PKCS#1 PEM and PKCS#8 PEM are accepted. Do not paste PEM content into YAML or `.env`, commit it, print it, or pass it to tests. The repository's `*.pem` ignore rule is defense in depth, not permission to store keys here.
+
+Automated tests use generated ephemeral RSA keys and a loopback HTTP server; they never contact GitHub. A real GitHub smoke test is optional only when an operator has explicitly configured an App and installation. Never request or substitute a personal access token.
 
 ## Database evolution
 

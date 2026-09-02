@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. Milestone M1 provides the minimal backend and local PostgreSQL foundation; review functionality is not implemented.
+> Project status: **pre-alpha**. Milestone M2 adds the internal GitHub App authentication foundation; webhook and review functionality are not implemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -33,7 +33,7 @@ The API and worker are logical components of the backend. PostgreSQL is the init
 - OpenAPI
 - OpenAI behind an internal provider abstraction
 
-The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, and Testcontainers. The frontend and delivery pipeline remain uninitialized.
+The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, and a narrow GitHub App authentication client. The frontend and delivery pipeline remain uninitialized.
 
 ## Repository layout
 
@@ -86,4 +86,4 @@ After startup, `GET http://localhost:8080/actuator/health` is the only intention
 
 ## Current milestone
 
-M1 includes only the backend runtime foundation, PostgreSQL-only local infrastructure, externalized database configuration, Actuator health, and database-backed context tests. GitHub integration, webhooks, review jobs and schemas, workers, analysis, AI integration, frontend initialization, OpenAPI documents, and CI/CD remain deferred.
+M2 adds RS256 GitHub App JWT generation, installation-token exchange and in-memory reuse, explicit GitHub error classification, and one internal read-only operation that lists the accessible repository count. Installation ID is supplied per operation and tokens remain server-side. Webhooks, persisted installations or tenants, review jobs, workers, pull request processing, publishing, AI integration, frontend initialization, OpenAPI documents, and CI/CD remain deferred.
