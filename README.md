@@ -1,0 +1,74 @@
+# Pull Request Review Assistant
+
+> Project status: **pre-alpha**. Milestone M0 establishes documentation and repository boundaries only; no application is implemented or deployable.
+
+Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
+
+## High-level architecture
+
+The intended flow is:
+
+```text
+GitHub
+  -> webhook ingestion
+  -> Spring Boot API
+  -> PostgreSQL-backed review job queue
+  -> review worker
+  -> GitHub API and context retrieval
+  -> deterministic analysis and LLM analysis
+  -> validation and ranking
+  -> GitHub pull request review publishing
+```
+
+The API and worker are logical components of the backend. PostgreSQL is the initial system of record and durable queue. External systems—including GitHub and AI providers—are accessed through explicit integration boundaries. See [docs/architecture.md](docs/architecture.md) and the ADRs in [docs/adr](docs/adr).
+
+## Planned stack
+
+- Java 21 and Spring Boot 4.1.x
+- Maven Wrapper
+- PostgreSQL 18 and Flyway
+- Next.js and TypeScript
+- Docker Compose for local dependencies
+- GitHub Actions
+- OpenAPI
+- OpenAI behind an internal provider abstraction
+
+These choices describe the target architecture. M0 intentionally installs none of them and declares no dependencies.
+
+## Repository layout
+
+```text
+backend/     Future Spring Boot API and review worker
+frontend/    Future Next.js user interface
+infra/       Future local and deployment infrastructure definitions
+docs/        Product, architecture, security, testing, and development documentation
+docs/adr/    Accepted architecture decision records
+```
+
+Root policy and contributor files apply across the monorepo. Directory READMEs describe current scope and ownership without creating placeholder applications.
+
+## Development philosophy
+
+- Build the smallest production-sound increment required by the current milestone.
+- Prefer clear boundaries and simple, testable designs over speculative abstractions.
+- Keep domain logic independent from GitHub, persistence, and AI providers.
+- Treat all repository and pull request data as untrusted.
+- Design explicitly for tenant isolation, webhook idempotency, job retries, and least privilege.
+- Prefer fewer high-confidence findings over many low-quality findings.
+- Add infrastructure and dependencies only when a demonstrated requirement exists.
+- Record material architecture changes in ADRs rather than changing direction silently.
+
+## Documentation map
+
+- [Product definition](docs/product.md)
+- [Architecture](docs/architecture.md)
+- [Security principles](docs/security.md)
+- [Threat model](docs/threat-model.md)
+- [Testing strategy](docs/testing-strategy.md)
+- [Development guide](docs/development.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+
+## Current milestone
+
+M0 includes only repository structure, engineering rules, architectural documentation, and decision records. Spring Boot, Next.js, Maven, npm, databases, Docker Compose services, workflows, OpenAPI documents, business code, and runtime configuration are intentionally deferred to later milestones.

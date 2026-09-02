@@ -1,0 +1,39 @@
+# Operating systems and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Java and Maven
+target/
+.mvn/timing.properties
+*.log
+
+# JavaScript and Next.js
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+# Test and tool output
+.testcontainers.properties
+reports/
+tmp/
+temp/
+
+# Local infrastructure state
+.docker/
+*.pid
