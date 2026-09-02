@@ -2,11 +2,15 @@
 
 ## Current state
 
-The repository is at Milestone M0 and contains documentation and empty component boundaries only. There is no application to build, run, test, or deploy. Do not infer missing bootstrap files: Maven, Spring Boot, Next.js, Docker Compose, PostgreSQL services, Flyway migrations, OpenAPI specifications, and GitHub Actions workflows are intentionally absent.
+The repository is at Milestone M1. The backend is a minimal Java 21 and Spring Boot 4.1.1 application with PostgreSQL connectivity, Flyway, JPA schema validation, Actuator health, and Testcontainers tests. Local infrastructure contains PostgreSQL only. There is no review functionality, domain schema, frontend, OpenAPI specification, GitHub integration, worker, AI integration, or CI/CD workflow.
 
-## Planned prerequisites
+## Prerequisites
 
-Later milestones are expected to require Java 21, the repository Maven Wrapper, a supported Node.js toolchain, Docker with Compose support, and Git. Exact versions and setup commands must be added only when the corresponding project files exist. PostgreSQL 18 is the planned local and production-compatible database version.
+- Java 21 JDK available through `JAVA_HOME` or `PATH`
+- Docker with Docker Compose
+- Git
+
+The backend includes Maven Wrapper 3.3.4 pinned to Maven 3.9.16, so a global Maven installation is unnecessary. The local and test database image is PostgreSQL `18.6-bookworm`.
 
 ## Working in the monorepo
 
@@ -17,25 +21,51 @@ Later milestones are expected to require Java 21, the repository Maven Wrapper, 
 - Use synthetic data and controlled external-service doubles for routine development.
 - Update documentation alongside behavior and record material architecture changes with a superseding ADR.
 
-## Expected future local workflow
+## Local backend workflow
 
-The concrete commands will be documented after each module is initialized. The intended shape is:
+From the repository root:
 
-1. configure safe local environment values from the example file;
-2. start only the local dependencies needed for the task;
-3. run backend or frontend through repository-owned commands;
-4. run focused tests during development and the relevant full checks before completion;
-5. stop local services without deleting data unless deletion is explicitly intended.
+```sh
+cp .env.example .env
+docker compose --env-file .env -f infra/docker-compose.yml up -d
+cd backend
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+```
 
-This is guidance, not a claim that these commands or services exist in M0.
+On Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+docker compose --env-file .env -f infra/docker-compose.yml up -d
+Set-Location backend
+.\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local
+```
+
+The health endpoint is `http://localhost:8080/actuator/health`. The database health contributor is enabled, only the health endpoint is exposed over HTTP, and details are hidden.
+
+Stop local infrastructure from the repository root without deleting the named volume:
+
+```sh
+docker compose --env-file .env -f infra/docker-compose.yml down
+```
+
+## Running tests
+
+From `backend`:
+
+```sh
+./mvnw clean verify
+```
+
+On Windows, use `.\mvnw.cmd clean verify`. The test suite starts a pinned PostgreSQL Testcontainer, connects Spring to it, runs Flyway, validates the empty schema through Hibernate, and shuts the container down through the normal Testcontainers lifecycle. It does not require the Compose service to be running.
 
 ## Configuration principles
 
-Configuration is introduced only for a demonstrated runtime need. Names should describe purpose, safe defaults should be explicit, required values should fail fast, and secrets must never be committed, logged, exposed to the frontend, or passed to AI models. Tenant-specific policy belongs in tenant-scoped data rather than process-global environment variables when dynamic administration is required.
+Common configuration is in `backend/src/main/resources/application.yml`. The local profile in `application-local.yml` imports the ignored root `.env` file. Non-local environments inject `DB_JDBC_URL`, `DB_USERNAME`, and `DB_PASSWORD` directly. Required values have no application defaults, so missing database configuration fails startup instead of selecting an embedded database. Secrets must never be committed, logged, exposed to the frontend, or passed to AI models.
 
 ## Database evolution
 
-Flyway will own schema evolution once persistence is introduced. Add a new versioned migration for every schema change; never edit a migration that may have run outside a disposable local environment. Integration tests will apply migrations to PostgreSQL through Testcontainers.
+Flyway is enabled and is the sole schema migration mechanism. M1 has no migration because there are no business tables. Hibernate is configured with `ddl-auto: validate`; it cannot create or update the schema. Add a new versioned migration for every future schema change and never edit a migration that may have run outside a disposable local environment. Integration tests run Flyway against PostgreSQL through Testcontainers.
 
 ## Troubleshooting and completion
 

@@ -1,5 +1,23 @@
 # Infrastructure
 
-This directory is reserved for future local-development and deployment infrastructure definitions. Infrastructure will support the product boundaries without owning domain rules and will be introduced only for demonstrated requirements.
+This directory contains the local-development PostgreSQL service required by the M1 backend. It does not contain product rules or production deployment definitions.
 
-M0 intentionally contains no Docker Compose file or services, database volume, container image, CI/CD workflow, cloud resource definition, observability stack, or deployment configuration. PostgreSQL 18 and Docker Compose are planned for later local development, but exact topology and hosting remain deferred.
+## Local PostgreSQL
+
+Copy the safe configuration template before starting the service:
+
+```sh
+cp .env.example .env
+docker compose --env-file .env -f infra/docker-compose.yml up -d
+docker compose --env-file .env -f infra/docker-compose.yml ps
+```
+
+The Compose project runs only `postgres:18.6-bookworm`, binds it to `127.0.0.1`, checks readiness with `pg_isready`, and stores data in the named `postgres-data` volume. Database name, port, username, and password come from the ignored root `.env` file; Compose has no default password.
+
+Stop the service without deleting its data:
+
+```sh
+docker compose --env-file .env -f infra/docker-compose.yml down
+```
+
+Deleting the named volume is intentionally not part of the normal shutdown procedure. Redis, Kafka, object storage, mail services, proxies, frontend containers, CI/CD, cloud resources, and production topology remain deferred.

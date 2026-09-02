@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. Milestone M0 establishes documentation and repository boundaries only; no application is implemented or deployable.
+> Project status: **pre-alpha**. Milestone M1 provides the minimal backend and local PostgreSQL foundation; review functionality is not implemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -33,14 +33,14 @@ The API and worker are logical components of the backend. PostgreSQL is the init
 - OpenAPI
 - OpenAI behind an internal provider abstraction
 
-These choices describe the target architecture. M0 intentionally installs none of them and declares no dependencies.
+The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, and Testcontainers. The frontend and delivery pipeline remain uninitialized.
 
 ## Repository layout
 
 ```text
-backend/     Future Spring Boot API and review worker
+backend/     Spring Boot foundation; future API and review worker
 frontend/    Future Next.js user interface
-infra/       Future local and deployment infrastructure definitions
+infra/       Local PostgreSQL Compose definition; future deployment definitions
 docs/        Product, architecture, security, testing, and development documentation
 docs/adr/    Accepted architecture decision records
 ```
@@ -69,6 +69,21 @@ Root policy and contributor files apply across the monorepo. Directory READMEs d
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 
+## Local backend development
+
+Prerequisites are a Java 21 JDK and Docker with Docker Compose. The backend uses its checked-in Maven Wrapper, so a global Maven installation is not required.
+
+```sh
+cp .env.example .env
+docker compose --env-file .env -f infra/docker-compose.yml up -d
+cd backend
+./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+```
+
+On Windows PowerShell, use `Copy-Item .env.example .env` and run `mvnw.cmd` from `backend`.
+
+After startup, `GET http://localhost:8080/actuator/health` is the only intentionally exposed operational endpoint. See [docs/development.md](docs/development.md) for exact test and shutdown commands.
+
 ## Current milestone
 
-M0 includes only repository structure, engineering rules, architectural documentation, and decision records. Spring Boot, Next.js, Maven, npm, databases, Docker Compose services, workflows, OpenAPI documents, business code, and runtime configuration are intentionally deferred to later milestones.
+M1 includes only the backend runtime foundation, PostgreSQL-only local infrastructure, externalized database configuration, Actuator health, and database-backed context tests. GitHub integration, webhooks, review jobs and schemas, workers, analysis, AI integration, frontend initialization, OpenAPI documents, and CI/CD remain deferred.
