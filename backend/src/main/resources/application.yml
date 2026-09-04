@@ -36,3 +36,14 @@ github:
   webhook:
     secret: ${GITHUB_WEBHOOK_SECRET}
     max-body-size: ${GITHUB_WEBHOOK_MAX_BODY_SIZE:1MB}
+
+review:
+  job:
+    max-attempts: ${REVIEW_JOB_MAX_ATTEMPTS:3}
+    retry-base-delay: ${REVIEW_JOB_RETRY_BASE_DELAY:10s}
+    retry-max-delay: ${REVIEW_JOB_RETRY_MAX_DELAY:5m}
+  worker:
+    enabled: ${REVIEW_WORKER_ENABLED:false}
+    poll-interval: ${REVIEW_WORKER_POLL_INTERVAL:5s}
+    batch-size: ${REVIEW_WORKER_BATCH_SIZE:10}
+    lease-duration: ${REVIEW_WORKER_LEASE_DURATION:2m}

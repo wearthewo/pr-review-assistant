@@ -4,7 +4,7 @@
 
 Testing must provide confidence in behavior, boundaries, tenant isolation, idempotency, retry safety, concurrency, provider contracts, and safe failure. Tests should be deterministic, readable, and proportionate to risk. The default suite must not depend on live GitHub, a live AI provider, or developer-owned infrastructure.
 
-M1 establishes a Spring context test and a PostgreSQL Testcontainers integration test for the backend foundation. M2 adds deterministic JWT/key-format tests, loopback GitHub HTTP contract tests, cache concurrency tests, and secret-regression assertions. M3 adds exact-byte webhook signature and HTTP contract tests plus PostgreSQL migration, persistence, uniqueness, and synchronized duplicate-delivery concurrency tests. The remaining categories below become requirements as corresponding behavior is implemented.
+M1 establishes a Spring context test and a PostgreSQL Testcontainers integration test for the backend foundation. M2 adds deterministic JWT/key-format tests, loopback GitHub HTTP contract tests, cache concurrency tests, and secret-regression assertions. M3 adds exact-byte webhook signature and HTTP contract tests plus PostgreSQL migration, persistence, uniqueness, and synchronized duplicate-delivery concurrency tests. M4 adds deterministic retry/worker unit tests and PostgreSQL lease, ownership, `SKIP LOCKED`, transition, and multi-worker concurrency tests. The remaining categories below become requirements as corresponding behavior is implemented.
 
 ## Test layers
 
@@ -36,7 +36,7 @@ Keep sanitized, synthetic fixtures for supported GitHub event variants. M3 tests
 
 ### Concurrency tests
 
-Use the real PostgreSQL locking and transaction behavior to prove that concurrent workers do not claim the same available job, expired work can be recovered, retry transitions remain valid, and publication guards prevent duplicate external effects. Also exercise simultaneous duplicate webhook delivery and tenant quota contention. Synchronize tests deliberately; avoid timing-only assertions and unbounded sleeps.
+Use the real PostgreSQL locking and transaction behavior to prove that concurrent workers do not claim the same available job, locked rows are skipped rather than blocking peers, expired work can be recovered by one new owner, stale owners cannot transition work, and concurrent completion remains safe. M4 uses latches, barriers, and bounded futures rather than sleeps for these claims. Also exercise simultaneous duplicate webhook delivery and, when those features exist, tenant quota contention and publication guards.
 
 ### End-to-end tests
 

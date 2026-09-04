@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class- and algorithm-level design. At M3, the Spring Boot/PostgreSQL foundation, internal GitHub App authentication boundary, and durable webhook-ingestion boundary exist; the review pipeline remains unimplemented.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M4, the Spring Boot/PostgreSQL foundation, internal GitHub App authentication boundary, durable webhook-ingestion boundary, and review-job lifecycle exist; the pull request review pipeline remains unimplemented.
 
 ## System context
 
@@ -34,11 +34,11 @@ Owns use-case coordination, authorization, tenant context, and transaction bound
 
 ### PostgreSQL system of record and job queue
 
-Stores durable product state and review jobs. Queue operations provide atomic claiming, explicit state transitions, retry scheduling, and recovery from abandoned work. Tenant ownership is part of all tenant-scoped data. PostgreSQL is the initial queue; a separate broker is not part of the baseline architecture.
+Stores durable product state and review jobs. M4 queue operations create `READY` work and transactionally claim bounded due batches using PostgreSQL row locking with `SKIP LOCKED`. Jobs move through `READY`, `PROCESSING`, `COMPLETED`, or `FAILED`; retry delay remains data in `next_attempt_at` rather than a separate status. Expiring leases recover abandoned work, and a new claim token on every claim prevents a stale owner from committing a transition. PostgreSQL is the source of truth and initial queue; Redis, Kafka, and distributed lock coordination remain unjustified.
 
 ### Review worker
 
-Claims durable jobs, orchestrates the review pipeline, records bounded progress and outcomes, and makes each step safe to retry. It does not assume exactly-once delivery. Publishing is guarded against duplicate external effects.
+Claims durable jobs in deterministic due/creation/ID order, commits the claim, then executes work outside a database transaction. Completion, retry, and failure use separate short ownership-checked transactions. M4 supplies only a disabled-by-default scheduler, poll-once coordinator, and no-op handler so lifecycle behavior can be proven without PR logic. Later handlers must remain retry-safe; exactly-once execution is not promised.
 
 ### GitHub integration
 
@@ -66,7 +66,7 @@ Will provide tenant administrators with configuration, status, and operational v
 
 ### Infrastructure and delivery
 
-Defines PostgreSQL-only local infrastructure for the backend. It will add CI checks and deployment concerns only when required by a later milestone. Infrastructure does not own product rules. No additional service, CI workflow, or deployment platform choice exists at M3.
+Defines PostgreSQL-only local infrastructure for the backend. It will add CI checks and deployment concerns only when required by a later milestone. Infrastructure does not own product rules. No additional service, CI workflow, or deployment platform choice exists at M4.
 
 ## Domain and dependency direction
 
@@ -84,7 +84,7 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication infrastructure, and the webhook endpoint. Installation tokens are cached only within the process; multi-instance cache coordination is deferred. The planned backend still contains logically separate API and worker responsibilities; whether they run as separate processes is a later operational decision and must not weaken their boundary. PostgreSQL stores accepted webhook envelopes but no GitHub credentials, installations, tenants, or review jobs. The frontend will be a separate web application. Exact hosting, topology, scaling, and network design are intentionally deferred until requirements are demonstrated.
+The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication infrastructure, the webhook endpoint, and an optional scheduled job poller. Installation tokens are cached only within the process; multi-instance cache coordination is deferred. Database locks and claim tokens make job ownership safe across multiple backend processes even though deployment topology remains undecided. PostgreSQL stores accepted webhook envelopes and M4 jobs, but no GitHub credentials, installations, tenants, PR details, or review findings. The frontend will be separate. Exact hosting, worker/API process separation, scaling, and network design are intentionally deferred until requirements are demonstrated.
 
 ## Decision records
 

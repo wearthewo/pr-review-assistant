@@ -49,6 +49,16 @@ This document defines required controls. Concrete libraries, schemas, thresholds
 - GitHub delivery ID is an opaque idempotency key. A PostgreSQL unique constraint and conflict-safe insert prevent concurrent duplicates, and the insert commits before `202 Accepted` is returned.
 - M3 does not parse installation identity, create tenant state or review work, call GitHub, persist credentials, or process event-specific content.
 
+### Review-job controls implemented in M4
+
+- PostgreSQL is the job-state authority. Due jobs are selected and marked `PROCESSING` in one short transaction with `FOR UPDATE SKIP LOCKED`; work runs only after that transaction commits.
+- Every claim has a fresh opaque UUID token and bounded expiry. Completion, retry, and failure require the current token, so an expired stale worker cannot overwrite a newer owner.
+- Attempts are incremented at claim time and cannot exceed the finite configured maximum. Retryable failures use deterministic capped exponential backoff; terminal and exhausted work becomes `FAILED`.
+- Expired claims are recovered by later polls without manual repair. An expired claim at its maximum attempt is terminalized rather than reclaimed indefinitely.
+- Error storage accepts only a 64-character uppercase safe code. Jobs contain no payload, source content, stack trace, external response, GitHub credential, webhook value, or authorization data.
+- Poll batches, lease duration, retry delays, and attempt counts are validated and bounded. The scheduler is disabled by default and prevents overlapping ticks within one process; PostgreSQL locking remains the cross-process control.
+- M4 deliberately has no tenant or installation data. Before real review work is enqueued, a later milestone must add explicit authenticated tenant/installation ownership and its isolation tests.
+
 ## Untrusted repository and model content
 
 - Treat diffs, source files, paths, comments, commit messages, metadata, generated files, encodings, and archives as malicious input.
