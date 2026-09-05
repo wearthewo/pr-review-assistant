@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. Milestone M4 adds a durable PostgreSQL review-job lifecycle and worker foundation; pull request review processing is not implemented.
+> Project status: **pre-alpha**. Milestone M5 atomically turns supported pull request webhooks into revision-specific durable review jobs; pull request data retrieval and review processing are not implemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -33,7 +33,7 @@ The API and worker are logical components of the backend. PostgreSQL is the init
 - OpenAPI
 - OpenAI behind an internal provider abstraction
 
-The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App authentication client, a signed webhook-ingestion endpoint, and a PostgreSQL-backed review-job worker foundation. The frontend and actual review pipeline remain uninitialized.
+The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App authentication client, signed webhook ingestion, revision-specific pull request event interpretation, and a PostgreSQL-backed review-job worker foundation. The frontend and actual review pipeline remain uninitialized.
 
 ## Repository layout
 
@@ -86,4 +86,4 @@ After startup, `GET http://localhost:8080/actuator/health` is the operational en
 
 ## Current milestone
 
-M4 adds the Flyway-managed `review_jobs` queue, transactional `FOR UPDATE SKIP LOCKED` batch claiming, expiring leases with per-claim ownership tokens, deterministic bounded retry backoff, terminal failure handling, and a disabled-by-default scheduler around a no-op handler. Handler work runs outside claim transactions, and stale owners cannot change a reclaimed job. M3 webhooks are not connected to jobs yet. Pull request parsing or fetching, tenant/install persistence, GitHub review publication, AI integration, frontend initialization, OpenAPI documents, and CI/CD remain deferred.
+M5 supports signed `pull_request` actions `opened`, `reopened`, and `synchronize`. It extracts the installation ID, numeric repository ID, top-level pull request number, and head Git object ID, then atomically commits the accepted webhook and an idempotent `READY` job. Delivery ID deduplicates transport redelivery; the four-part review target independently deduplicates the same revision across distinct deliveries. Other events/actions and signed but incomplete relevant payloads are durably accepted without jobs. No GitHub API call occurs. PR fetching, tenant mapping, stale-job cancellation, real review handling/publication, AI, frontend, OpenAPI, and CI/CD remain deferred.

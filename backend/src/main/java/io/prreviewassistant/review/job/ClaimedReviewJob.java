@@ -10,7 +10,8 @@ public record ClaimedReviewJob(
         int attempt,
         int maxAttempts,
         Instant claimedAt,
-        Instant claimExpiresAt) {
+        Instant claimExpiresAt,
+        ReviewTarget reviewTarget) {
 
     public ClaimedReviewJob {
         Objects.requireNonNull(id, "id must not be null");
@@ -20,6 +21,16 @@ public record ClaimedReviewJob(
         if (attempt < 1 || maxAttempts < attempt || !claimExpiresAt.isAfter(claimedAt)) {
             throw new IllegalArgumentException("claim state is invalid");
         }
+    }
+
+    public ClaimedReviewJob(
+            UUID id,
+            UUID claimToken,
+            int attempt,
+            int maxAttempts,
+            Instant claimedAt,
+            Instant claimExpiresAt) {
+        this(id, claimToken, attempt, maxAttempts, claimedAt, claimExpiresAt, null);
     }
 
     @Override

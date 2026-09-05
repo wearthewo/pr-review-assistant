@@ -3,6 +3,7 @@ package io.prreviewassistant.github.webhook;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.Mockito.mock;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -30,7 +31,7 @@ class GitHubWebhookControllerTest {
         GitHubWebhookService service = new GitHubWebhookService(
                 verifier,
                 JsonMapper.builder().build(),
-                delivery -> GitHubWebhookStore.StoreResult.ACCEPTED,
+                acceptance(delivery -> GitHubWebhookStore.StoreResult.ACCEPTED),
                 Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
         mockMvc = MockMvcBuilders.standaloneSetup(new GitHubWebhookController(properties, service))
                 .setControllerAdvice(new GitHubWebhookControllerAdvice())
@@ -52,7 +53,7 @@ class GitHubWebhookControllerTest {
         GitHubWebhookService duplicateService = new GitHubWebhookService(
                 new GitHubWebhookSignatureVerifier(properties),
                 JsonMapper.builder().build(),
-                delivery -> GitHubWebhookStore.StoreResult.DUPLICATE,
+                acceptance(delivery -> GitHubWebhookStore.StoreResult.DUPLICATE),
                 Clock.fixed(Instant.EPOCH, ZoneOffset.UTC));
         MockMvc duplicateMvc = MockMvcBuilders
                 .standaloneSetup(new GitHubWebhookController(properties, duplicateService))
@@ -137,9 +138,9 @@ class GitHubWebhookControllerTest {
         GitHubWebhookService failingService = new GitHubWebhookService(
                 new GitHubWebhookSignatureVerifier(properties),
                 JsonMapper.builder().build(),
-                delivery -> {
+                acceptance(delivery -> {
                     throw new IllegalStateException("database unavailable");
-                },
+                }),
                 Clock.systemUTC());
         MockMvc failingMvc = MockMvcBuilders
                 .standaloneSetup(new GitHubWebhookController(properties, failingService))
@@ -159,5 +160,9 @@ class GitHubWebhookControllerTest {
                 .header(GitHubWebhookController.DELIVERY_HEADER, "delivery-1")
                 .header(GitHubWebhookController.EVENT_HEADER, "ping")
                 .content(body);
+    }
+
+    private GitHubWebhookAcceptanceService acceptance(GitHubWebhookStore store) {
+        return new GitHubWebhookAcceptanceService(store, mock(GitHubWebhookEventProcessor.class));
     }
 }

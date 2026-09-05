@@ -2,7 +2,7 @@
 
 ## Scope
 
-This threat model covers the planned path from GitHub webhooks through durable processing, context retrieval, analysis, and GitHub review publication, plus the future administrative frontend and software supply chain. M3 adds a concrete signed, size-bounded, durable webhook-ingestion boundary; M4 adds a durable leased review-job lifecycle with no-op execution. Tenant persistence and actual review processing remain future scope.
+This threat model covers the planned path from GitHub webhooks through durable processing, context retrieval, analysis, and GitHub review publication, plus the future administrative frontend and software supply chain. M5 adds narrow interpretation of authenticated pull request revisions and atomic, target-idempotent job creation on top of M3 ingress and M4 leases. Tenant persistence, PR retrieval, and actual review processing remain future scope.
 
 ## Assets
 
@@ -23,6 +23,9 @@ Trust boundaries exist between GitHub and webhook ingestion, clients and the fut
 | --- | --- | --- |
 | GitHub webhook forgery | An attacker creates unauthorized durable input or actions | Verify HMAC-SHA256 over the exact bounded raw body with constant-time comparison; reject before parsing or persistence; protect and rotate the distinct webhook secret; subscribe the App only to needed event types |
 | Webhook replay or duplicate delivery | Duplicate work, cost, or GitHub comments | Atomically deduplicate the opaque globally unique delivery identifier at ingress; future job creation and publication must retain their own idempotency guards |
+| Different deliveries for the same PR revision | Duplicate review jobs and eventual review cost | Uniquely key review work by authenticated installation ID, numeric repository ID, PR number, and head object ID; use conflict-safe insertion rather than select-before-insert |
+| Crash between webhook and job creation | GitHub sees acceptance but the revision is never reviewed | Commit a new reviewable webhook and its job in one transaction; roll back the webhook when job insertion fails so redelivery remains effective |
+| Signed but malformed PR payload | Permanent retry loop, corrupt job identity, or attacker-controlled diagnostics | Validate only bounded typed identity fields after authentication; retain the delivery without a job, acknowledge it, and expose no payload detail |
 | Concurrent claims or worker crash | Duplicate active ownership, stuck work, or corrupt terminal state | Claim due rows with `FOR UPDATE SKIP LOCKED`, use expiring leases and a fresh token per claim, require that token on every transition, bound attempts, and execute work outside the claim transaction |
 | Malicious or secret-bearing job error | Credentials or attacker text persists in queue state or logs | Persist only a validated bounded safe error code; never copy exception messages, response bodies, stack traces, source content, or credentials into M4 job state |
 | Compromised installation token | Unauthorized repository reads or review publication | Use least permissions, short-lived tokens, server-only handling, no logging, revocation/rotation procedures, bounded use, and audit identifiers |
@@ -63,6 +66,8 @@ The M2 cache is local to one process. Multiple application instances can each mi
 
 M3 retains accepted webhook payloads as raw UTF-8 text for audit fidelity and future processing. This increases the impact of database read access and requires a future retention/deletion policy before production data governance is finalized. Payloads are never routine log data. M3 does not implement timestamp-based replay rejection because GitHub's required delivery contract supplies no signed delivery timestamp; durable delivery-ID uniqueness handles redelivery without inventing an unreliable freshness signal.
 
-M4 leases provide recovery, not exactly-once execution. A handler may have performed work before losing its lease, so all later external effects still require their own idempotency guard. Claim ownership is safe across backend processes, but scheduler coordination is intentionally process-local and each instance may poll. M4 jobs carry no tenant identity or work payload; they must not be used for real PR work until a later migration adds explicit authenticated ownership and reference data.
+M4 leases provide recovery, not exactly-once execution. A handler may have performed work before losing its lease, so all later external effects still require their own idempotency guard. Claim ownership is safe across backend processes, but scheduler coordination is intentionally process-local and each instance may poll. M5 jobs carry an authenticated installation reference and immutable repository/PR/revision identity, but the internal tenant mapping is not implemented; no outbound GitHub access may treat the payload alone as sufficient tenant authorization.
+
+M5 retains malformed signed reviewable deliveries without a processing-status column. This is deliberate because interpretation is synchronous and atomic for valid work, while permanently malformed data has no safe job to recover. Operational reporting and retention for these records remain later requirements.
 
 Review and update this model when adding an endpoint, permission, event type, data store, AI provider, executable analysis mechanism, deployment environment, tenant-facing feature, or material data-retention change, and after any security incident.

@@ -2,6 +2,7 @@ package io.prreviewassistant.github.webhook;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -22,10 +23,12 @@ class GitHubWebhookServiceTest {
             new GitHubWebhookSignatureVerifier(
                     new GitHubWebhookProperties(SECRET, DataSize.ofMegabytes(1))),
             JsonMapper.builder().build(),
-            delivery -> {
-                stored.set(delivery);
-                return GitHubWebhookStore.StoreResult.ACCEPTED;
-            },
+            new GitHubWebhookAcceptanceService(
+                    delivery -> {
+                        stored.set(delivery);
+                        return GitHubWebhookStore.StoreResult.ACCEPTED;
+                    },
+                    mock(GitHubWebhookEventProcessor.class)),
             Clock.fixed(NOW, ZoneOffset.UTC));
 
     @Test
