@@ -59,6 +59,17 @@ This document defines required controls. Concrete libraries, schemas, thresholds
 - Poll batches, lease duration, retry delays, and attempt counts are validated and bounded. The scheduler is disabled by default and prevents overlapping ticks within one process; PostgreSQL locking remains the cross-process control.
 - M4 deliberately has no tenant or installation data. Before real review work is enqueued, a later milestone must add explicit authenticated tenant/installation ownership and its isolation tests.
 
+### Pull request event controls implemented in M5
+
+- Event interpretation receives only payloads that passed M3 exact-byte authentication, bounded metadata checks, and JSON validation. It never creates a parallel or weaker ingress path.
+- Only `pull_request` actions `opened`, `reopened`, and `synchronize` can schedule work. All other event names and actions are successful no-ops.
+- Relevant payloads are narrowly read as untrusted trees. Positive installation/repository IDs, a positive top-level PR number, and a bounded hexadecimal 40-64 character head object ID are required; unneeded GitHub fields are not deserialized.
+- A signed but malformed relevant event is retained as an accepted delivery without a job and without logging payload-derived error detail. This avoids futile GitHub retries for permanently unprocessable content.
+- A new reviewable delivery and its job commit in one short transaction. Job insertion failure rolls back the webhook; duplicate-target conflict is a normal result that still permits a distinct delivery to commit.
+- Webhook delivery ID protects transport idempotency. A separate database unique key over installation, numeric repository, PR number, and head SHA protects business idempotency across deliveries and repository renames.
+- Installation identity is explicit in every M5 job and will select M2 credentials later. Internal tenant resolution and authorization are still required before outbound GitHub access.
+- The disabled-by-default M4 no-op handler terminally refuses target-bearing jobs, so enabling it cannot falsely mark a real review as completed. M5 performs no GitHub API or AI call.
+
 ## Untrusted repository and model content
 
 - Treat diffs, source files, paths, comments, commit messages, metadata, generated files, encodings, and archives as malicious input.

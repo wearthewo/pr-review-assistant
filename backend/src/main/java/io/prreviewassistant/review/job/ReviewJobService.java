@@ -17,7 +17,11 @@ public final class ReviewJobService {
         this.clock = clock;
     }
 
-    public ReviewJob create() {
+    ReviewJob createPlaceholder() {
         return store.create(properties.maxAttempts(), clock.instant());
+    }
+
+    public ReviewJobCreationResult createForReviewTarget(ReviewTarget target) {
+        return store.createForReviewTarget(target, properties.maxAttempts(), clock.instant());
     }
 }

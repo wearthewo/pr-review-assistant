@@ -4,7 +4,7 @@
 
 Testing must provide confidence in behavior, boundaries, tenant isolation, idempotency, retry safety, concurrency, provider contracts, and safe failure. Tests should be deterministic, readable, and proportionate to risk. The default suite must not depend on live GitHub, a live AI provider, or developer-owned infrastructure.
 
-M1 establishes a Spring context test and a PostgreSQL Testcontainers integration test for the backend foundation. M2 adds deterministic JWT/key-format tests, loopback GitHub HTTP contract tests, cache concurrency tests, and secret-regression assertions. M3 adds exact-byte webhook signature and HTTP contract tests plus PostgreSQL migration, persistence, uniqueness, and synchronized duplicate-delivery concurrency tests. M4 adds deterministic retry/worker unit tests and PostgreSQL lease, ownership, `SKIP LOCKED`, transition, and multi-worker concurrency tests. The remaining categories below become requirements as corresponding behavior is implemented.
+M1 establishes a Spring context test and a PostgreSQL Testcontainers integration test for the backend foundation. M2 adds deterministic JWT/key-format tests, loopback GitHub HTTP contract tests, cache concurrency tests, and secret-regression assertions. M3 adds exact-byte webhook signature and HTTP contract tests plus PostgreSQL migration, persistence, uniqueness, and synchronized duplicate-delivery concurrency tests. M4 adds deterministic retry/worker unit tests and PostgreSQL lease, ownership, `SKIP LOCKED`, transition, and multi-worker concurrency tests. M5 adds narrow pull request policy/parser tests, revision-key persistence and uniqueness tests, signed webhook-to-job tests, transaction rollback injection, no-op safety, and concurrent distinct-delivery/same-target coverage. The remaining categories below become requirements as corresponding behavior is implemented.
 
 ## Test layers
 
@@ -32,7 +32,7 @@ Provider contract tests use fakes or controlled mock servers by default. Optiona
 
 ### Webhook fixture tests
 
-Keep sanitized, synthetic fixtures for supported GitHub event variants. M3 tests the official GitHub HMAC vector, known test secrets and exact raw bytes, malformed/missing/SHA-1 signatures, altered and byte-reformatted bodies, Unicode/invalid encoding, duplicate delivery IDs, malformed JSON, bounded headers, and configured size limits. Future event processing must add fixtures for supported actions, reordered/additional fields, and schema variants. Fixtures must contain no real tenant source code or credentials.
+Keep sanitized, synthetic fixtures for supported GitHub event variants. M3 tests the official GitHub HMAC vector, known test secrets and exact raw bytes, malformed/missing/SHA-1 signatures, altered and byte-reformatted bodies, Unicode/invalid encoding, duplicate delivery IDs, malformed JSON, bounded headers, and configured size limits. M5 tests `opened`, `reopened`, `synchronize`, ignored actions/events, missing/wrong/oversized identity fields, duplicate delivery versus duplicate revision, and changed head revisions. Fixtures must contain no real tenant source code or credentials.
 
 ### Concurrency tests
 

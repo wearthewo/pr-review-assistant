@@ -20,17 +20,17 @@ public final class GitHubWebhookService {
 
     private final GitHubWebhookSignatureVerifier signatureVerifier;
     private final ObjectMapper objectMapper;
-    private final GitHubWebhookStore store;
+    private final GitHubWebhookAcceptanceService acceptanceService;
     private final Clock clock;
 
     public GitHubWebhookService(
             GitHubWebhookSignatureVerifier signatureVerifier,
             ObjectMapper objectMapper,
-            GitHubWebhookStore store,
+            GitHubWebhookAcceptanceService acceptanceService,
             Clock clock) {
         this.signatureVerifier = signatureVerifier;
         this.objectMapper = objectMapper;
-        this.store = store;
+        this.acceptanceService = acceptanceService;
         this.clock = clock;
     }
 
@@ -45,14 +45,14 @@ public final class GitHubWebhookService {
 
         validateHeader(deliveryId, MAX_DELIVERY_ID_LENGTH);
         validateHeader(eventName, MAX_EVENT_NAME_LENGTH);
-        validateJson(rawBody);
+        JsonNode payload = validateJson(rawBody);
 
         GitHubWebhookDelivery delivery = new GitHubWebhookDelivery(
                 deliveryId, eventName, clock.instant(), decodeUtf8(rawBody));
-        return store.store(delivery);
+        return acceptanceService.accept(delivery, payload);
     }
 
-    private void validateJson(byte[] rawBody) {
+    private JsonNode validateJson(byte[] rawBody) {
         if (rawBody.length == 0) {
             throw GitHubWebhookException.invalidRequest();
         }
@@ -63,6 +63,7 @@ public final class GitHubWebhookService {
             if (document == null || document.isMissingNode()) {
                 throw GitHubWebhookException.invalidRequest();
             }
+            return document;
         } catch (JacksonException exception) {
             throw GitHubWebhookException.invalidRequest();
         }

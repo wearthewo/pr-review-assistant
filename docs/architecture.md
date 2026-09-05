@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M4, the Spring Boot/PostgreSQL foundation, internal GitHub App authentication boundary, durable webhook-ingestion boundary, and review-job lifecycle exist; the pull request review pipeline remains unimplemented.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M5, the Spring Boot/PostgreSQL foundation, GitHub App authentication boundary, durable webhook ingestion, narrow pull request event interpretation, and revision-specific review-job lifecycle exist; PR data retrieval and the review pipeline remain unimplemented.
 
 ## System context
 
@@ -26,7 +26,7 @@ GitHub
 
 ### Webhook ingestion
 
-Terminates GitHub webhook requests, bounds the raw request body, authenticates its exact bytes, validates minimum envelope metadata and JSON syntax, and durably deduplicates accepted delivery IDs. M3 stores the original accepted UTF-8 JSON text and returns without event-specific parsing, installation/tenant resolution, job creation, GitHub API calls, or review work. Installation identity and tenant resolution belong to future authenticated processing, not ingress trust decisions.
+Terminates GitHub webhook requests, bounds the raw request body, authenticates its exact bytes, validates minimum envelope metadata and JSON syntax, and durably deduplicates accepted delivery IDs. M5 dispatches only already-verified JSON. It recognizes `pull_request` actions `opened`, `reopened`, and `synchronize`, validates only the fields needed for an exact revision, and ignores all other events/actions. Signed but malformed reviewable events remain durable without jobs. Tenant resolution remains future work; no GitHub API call or review work occurs at ingress.
 
 ### API and application boundary
 
@@ -34,11 +34,11 @@ Owns use-case coordination, authorization, tenant context, and transaction bound
 
 ### PostgreSQL system of record and job queue
 
-Stores durable product state and review jobs. M4 queue operations create `READY` work and transactionally claim bounded due batches using PostgreSQL row locking with `SKIP LOCKED`. Jobs move through `READY`, `PROCESSING`, `COMPLETED`, or `FAILED`; retry delay remains data in `next_attempt_at` rather than a separate status. Expiring leases recover abandoned work, and a new claim token on every claim prevents a stale owner from committing a transition. PostgreSQL is the source of truth and initial queue; Redis, Kafka, and distributed lock coordination remain unjustified.
+Stores durable product state and review jobs. For a new reviewable delivery, its raw envelope and conflict-safe job insertion commit atomically. The review identity is installation ID, numeric repository ID, pull request number, and immutable expected head object ID. Delivery uniqueness and review-target uniqueness are separate database guarantees. M4 queue operations create `READY` work and transactionally claim bounded due batches using PostgreSQL row locking with `SKIP LOCKED`. Jobs move through `READY`, `PROCESSING`, `COMPLETED`, or `FAILED`; retry delay remains data in `next_attempt_at` rather than a separate status. PostgreSQL remains the source of truth; Redis and Kafka remain unjustified.
 
 ### Review worker
 
-Claims durable jobs in deterministic due/creation/ID order, commits the claim, then executes work outside a database transaction. Completion, retry, and failure use separate short ownership-checked transactions. M4 supplies only a disabled-by-default scheduler, poll-once coordinator, and no-op handler so lifecycle behavior can be proven without PR logic. Later handlers must remain retry-safe; exactly-once execution is not promised.
+Claims durable jobs in deterministic due/creation/ID order, commits the claim, then executes work outside a database transaction. Completion, retry, and failure use separate short ownership-checked transactions. The scheduler remains disabled by default. The infrastructure no-op handler succeeds only for targetless M4 fixtures and terminally refuses real target-bearing jobs, so M5 work cannot be falsely completed. Later handlers must remain retry-safe; exactly-once execution is not promised.
 
 ### GitHub integration
 
@@ -84,7 +84,7 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication infrastructure, the webhook endpoint, and an optional scheduled job poller. Installation tokens are cached only within the process; multi-instance cache coordination is deferred. Database locks and claim tokens make job ownership safe across multiple backend processes even though deployment topology remains undecided. PostgreSQL stores accepted webhook envelopes and M4 jobs, but no GitHub credentials, installations, tenants, PR details, or review findings. The frontend will be separate. Exact hosting, worker/API process separation, scaling, and network design are intentionally deferred until requirements are demonstrated.
+The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication infrastructure, the webhook endpoint, and an optional scheduled job poller. Installation tokens are cached only within the process; multi-instance cache coordination is deferred. Database locks and claim tokens make job ownership safe across multiple backend processes. PostgreSQL stores accepted webhook envelopes and immutable M5 review targets, but no GitHub credentials, tenant/install records, fetched PR content, or findings. The frontend and deployment topology remain undecided.
 
 ## Decision records
 

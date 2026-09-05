@@ -19,12 +19,15 @@ import java.util.concurrent.TimeUnit;
 
 import io.prreviewassistant.review.job.ClaimedReviewJob;
 import io.prreviewassistant.review.job.ReviewJob;
+import io.prreviewassistant.review.job.ReviewJobCreationResult;
 import io.prreviewassistant.review.job.ReviewJobErrorCode;
 import io.prreviewassistant.review.job.ReviewJobExecutionResult;
+import io.prreviewassistant.review.job.ReviewJobHandler;
 import io.prreviewassistant.review.job.ReviewJobRetryPolicy;
 import io.prreviewassistant.review.job.ReviewJobStatus;
 import io.prreviewassistant.review.job.ReviewJobStore;
 import io.prreviewassistant.review.job.ReviewJobWorker;
+import io.prreviewassistant.review.job.ReviewTarget;
 import io.prreviewassistant.review.job.ReviewWorkerProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -63,6 +66,9 @@ class ReviewJobPersistenceIntegrationTest {
     @Autowired
     private PlatformTransactionManager transactionManager;
 
+    @Autowired
+    private ReviewJobHandler reviewJobHandler;
+
     @BeforeEach
     void clearJobs() {
         jdbcClient.sql("DELETE FROM review_jobs").update();
@@ -81,6 +87,87 @@ class ReviewJobPersistenceIntegrationTest {
         assertThat(job.createdAt()).isEqualTo(NOW);
         assertThat(job.updatedAt()).isEqualTo(NOW);
         assertThat(job.claimToken()).isNull();
+    }
+
+    @Test
+    void createsAndClaimsARevisionSpecificJobWithAllIdentityFields() {
+        ReviewTarget target = new ReviewTarget(101, 202, 42, "a".repeat(40));
+
+        assertThat(store.createForReviewTarget(target, 3, NOW))
+                .isEqualTo(ReviewJobCreationResult.CREATED);
+        assertThat(store.claimDue(NOW, LEASE, 1).getFirst().reviewTarget()).isEqualTo(target);
+
+        StoredTarget stored = jdbcClient.sql("""
+                        SELECT github_installation_id, github_repository_id,
+                               github_pull_request_number, github_head_sha
+                        FROM review_jobs
+                        """)
+                .query((resultSet, rowNumber) -> new StoredTarget(
+                        resultSet.getLong("github_installation_id"),
+                        resultSet.getLong("github_repository_id"),
+                        resultSet.getInt("github_pull_request_number"),
+                        resultSet.getString("github_head_sha")))
+                .single();
+        assertThat(stored).isEqualTo(new StoredTarget(101, 202, 42, "a".repeat(40)));
+    }
+
+    @Test
+    void targetCreationUsesDatabaseConflictHandlingAndEachIdentityDimension() {
+        ReviewTarget target = new ReviewTarget(101, 202, 42, "a".repeat(40));
+
+        assertThat(store.createForReviewTarget(target, 3, NOW))
+                .isEqualTo(ReviewJobCreationResult.CREATED);
+        assertThat(store.createForReviewTarget(target, 3, NOW))
+                .isEqualTo(ReviewJobCreationResult.ALREADY_EXISTS);
+        assertThat(store.createForReviewTarget(new ReviewTarget(102, 202, 42, "a".repeat(40)), 3, NOW))
+                .isEqualTo(ReviewJobCreationResult.CREATED);
+        assertThat(store.createForReviewTarget(new ReviewTarget(101, 203, 42, "a".repeat(40)), 3, NOW))
+                .isEqualTo(ReviewJobCreationResult.CREATED);
+        assertThat(store.createForReviewTarget(new ReviewTarget(101, 202, 43, "a".repeat(40)), 3, NOW))
+                .isEqualTo(ReviewJobCreationResult.CREATED);
+        assertThat(store.createForReviewTarget(new ReviewTarget(101, 202, 42, "b".repeat(40)), 3, NOW))
+                .isEqualTo(ReviewJobCreationResult.CREATED);
+
+        assertThat(jdbcClient.sql("SELECT count(*) FROM review_jobs").query(Long.class).single()).isEqualTo(5);
+    }
+
+    @Test
+    void databaseConstraintDirectlyRejectsDuplicateReviewTargets() {
+        String sql = """
+                INSERT INTO review_jobs
+                    (id, status, attempts, max_attempts, next_attempt_at,
+                     github_installation_id, github_repository_id,
+                     github_pull_request_number, github_head_sha, created_at, updated_at)
+                VALUES (:id, 'READY', 0, 3, :now, 101, 202, 42, :sha, :now, :now)
+                """;
+        jdbcClient.sql(sql)
+                .param("id", UUID.randomUUID()).param("now", offset(NOW)).param("sha", "a".repeat(40)).update();
+
+        assertThatThrownBy(() -> jdbcClient.sql(sql)
+                .param("id", UUID.randomUUID()).param("now", offset(NOW)).param("sha", "a".repeat(40)).update())
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void databaseConstraintRejectsPartialOrInvalidReviewTargets() {
+        assertThatThrownBy(() -> jdbcClient.sql("""
+                        INSERT INTO review_jobs
+                            (id, status, attempts, max_attempts, next_attempt_at,
+                             github_installation_id, created_at, updated_at)
+                        VALUES (:id, 'READY', 0, 3, :now, 101, :now, :now)
+                        """)
+                .param("id", UUID.randomUUID()).param("now", offset(NOW)).update())
+                .isInstanceOf(DataIntegrityViolationException.class);
+
+        assertThatThrownBy(() -> jdbcClient.sql("""
+                        INSERT INTO review_jobs
+                            (id, status, attempts, max_attempts, next_attempt_at,
+                             github_installation_id, github_repository_id,
+                             github_pull_request_number, github_head_sha, created_at, updated_at)
+                        VALUES (:id, 'READY', 0, 3, :now, 101, 202, 42, 'not-a-git-id', :now, :now)
+                        """)
+                .param("id", UUID.randomUUID()).param("now", offset(NOW)).update())
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
@@ -409,5 +496,40 @@ class ReviewJobPersistenceIntegrationTest {
             String lastErrorCode,
             Instant createdAt,
             Instant updatedAt) {
+    }
+
+    @Test
+    void productionNoOpHandlerCannotSilentlyCompleteARealReviewJob() {
+        ReviewTarget target = new ReviewTarget(101, 202, 42, "a".repeat(40));
+        assertThat(store.createForReviewTarget(target, 3, NOW))
+                .isEqualTo(ReviewJobCreationResult.CREATED);
+        ReviewJobWorker worker = new ReviewJobWorker(
+                store,
+                reviewJobHandler,
+                new ReviewWorkerProperties(true, Duration.ofSeconds(5), 1, LEASE),
+                new ReviewJobRetryPolicy(Duration.ofSeconds(10), Duration.ofMinutes(5)),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        assertThat(worker.pollOnce()).isOne();
+        StoredJob stored = jdbcClient.sql("SELECT * FROM review_jobs")
+                .query((resultSet, rowNumber) -> new StoredJob(
+                        resultSet.getString("status"), resultSet.getInt("attempts"),
+                        resultSet.getInt("max_attempts"),
+                        instant(resultSet.getObject("next_attempt_at", OffsetDateTime.class)),
+                        resultSet.getObject("claim_token", UUID.class),
+                        instant(resultSet.getObject("claimed_at", OffsetDateTime.class)),
+                        instant(resultSet.getObject("claim_expires_at", OffsetDateTime.class)),
+                        instant(resultSet.getObject("completed_at", OffsetDateTime.class)),
+                        instant(resultSet.getObject("failed_at", OffsetDateTime.class)),
+                        resultSet.getString("last_error_code"),
+                        instant(resultSet.getObject("created_at", OffsetDateTime.class)),
+                        instant(resultSet.getObject("updated_at", OffsetDateTime.class))))
+                .single();
+        assertThat(stored.status()).isEqualTo("FAILED");
+        assertThat(stored.completedAt()).isNull();
+        assertThat(stored.lastErrorCode()).isEqualTo("REVIEW_HANDLER_NOT_IMPLEMENTED");
+    }
+
+    private record StoredTarget(long installationId, long repositoryId, int pullRequestNumber, String headSha) {
     }
 }

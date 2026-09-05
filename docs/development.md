@@ -2,7 +2,7 @@
 
 ## Current state
 
-The repository is at Milestone M4. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL connectivity, Flyway, JPA schema validation, Actuator health, Testcontainers tests, internal GitHub App authentication, secure durable webhook ingestion, and a PostgreSQL review-job worker foundation. Local infrastructure contains PostgreSQL only. There is no PR review processing, tenant schema, frontend, OpenAPI specification, AI integration, or CI/CD workflow.
+The repository is at Milestone M5. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL connectivity, Flyway, JPA schema validation, Actuator health, Testcontainers tests, internal GitHub App authentication, secure durable webhook ingestion, pull request revision interpretation, and a PostgreSQL review-job worker foundation. Local infrastructure contains PostgreSQL only. There is no PR data retrieval or review processing, tenant schema, frontend, OpenAPI specification, AI integration, or CI/CD workflow.
 
 ## Prerequisites
 
@@ -84,13 +84,15 @@ Use Spring duration syntax. All durations must be positive and the retry cap can
 
 ## Database evolution
 
-Flyway is enabled and is the sole schema migration mechanism. M3's V1 migration creates the minimal `github_webhook_deliveries` table with a database-unique GitHub delivery ID. M4's V2 migration creates `review_jobs`, state-shape and attempt constraints, and partial ready/processing polling indexes; V1 is unchanged. Hibernate is configured with `ddl-auto: validate`; it cannot create or update the schema. Add a new versioned migration for every future schema change and never edit a migration that may have run outside a disposable local environment. Integration tests run Flyway against PostgreSQL through Testcontainers.
+Flyway is enabled and is the sole schema migration mechanism. V1 creates `github_webhook_deliveries`; V2 creates the leased `review_jobs` queue; V3 adds installation ID, numeric repository ID, PR number, and 40-64 character hexadecimal head object ID. The target columns are all null only for M4 infrastructure fixtures and all present for M5 jobs. Their database unique constraint is the authoritative same-revision idempotency guard. Earlier migrations are unchanged. Integration tests run the full chain against PostgreSQL 18.6 through Testcontainers.
 
 Job creation persists `READY` with attempt zero, an explicit maximum, and `next_attempt_at` equal to the injected clock. A claim transaction first terminalizes expired final attempts, then selects due `READY` and reclaimable `PROCESSING` rows using `FOR UPDATE SKIP LOCKED`, ordered by `next_attempt_at`, `created_at`, and UUID. It increments attempts and assigns a UUID claim token plus lease before commit. The handler executes after claim commit. Completion, retry, and failure each use a separate conditional transaction requiring job ID, `PROCESSING`, and the current token. Retry clears ownership and schedules `base * 2^(attempt-1)` up to the cap. This is at-least-once execution; future external effects must be independently idempotent.
 
-Only validated uppercase safe error codes up to 64 characters are stored. Do not persist or log exception messages, stack traces, payloads, source content, provider response bodies, or credentials. Redis/Kafka, distributed scheduler coordination, priorities, webhook-to-job wiring, tenant/installation ownership, PR reference fields, and cleanup/retention policy remain deferred.
+Only validated uppercase safe error codes up to 64 characters are stored. Do not persist or log exception messages, stack traces, payloads, source content, provider response bodies, or credentials. Redis/Kafka, distributed scheduler coordination, priorities, tenant mapping, PR retrieval, stale-job cancellation, and cleanup/retention policy remain deferred.
 
-The endpoint returns `202` for both new and duplicate valid deliveries, `400` for malformed metadata or JSON, `401` for any missing, malformed, or invalid signature, `413` for an oversized body, `415` for unsupported media types, and `5xx` when durable storage fails. Error bodies are empty. PostgreSQL `ON CONFLICT DO NOTHING`, backed by the unique constraint, handles concurrent redelivery without a select/insert race.
+The endpoint returns `202` for both new and duplicate valid deliveries, `400` for malformed metadata or JSON, `401` for any missing, malformed, or invalid signature, `413` for an oversized body, `415` for unsupported media types, and `5xx` when durable storage fails. Error bodies are empty. After M3 verification, M5 handles only `pull_request` actions `opened`, `reopened`, and `synchronize`. Other events/actions and signed but incomplete relevant payloads commit the webhook without a job and still return `202`. For reviewable payloads, webhook and job insertions share one transaction; job insertion failure rolls both back. Distinct deliveries for one revision remain distinct webhook rows but use one job through PostgreSQL `ON CONFLICT DO NOTHING`.
+
+The production job-creation operation accepts only a validated `ReviewTarget`. Installation ID later selects M2 installation credentials; numeric repository ID survives renames; PR number locates the pull request; head SHA pins the expected revision for later stale-work detection. M5 makes no GitHub request. Keep `REVIEW_WORKER_ENABLED=false`: until M6 adds real handling, the no-op handler terminally rejects these target-bearing jobs rather than falsely completing them.
 
 ## Troubleshooting and completion
 

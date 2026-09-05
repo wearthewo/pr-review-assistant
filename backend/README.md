@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, an internal GitHub App authentication/client boundary, secure GitHub webhook ingestion, and a durable review-job worker foundation. It contains no pull request processing, review publishing, tenant persistence, or AI integration.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, an internal GitHub App authentication/client boundary, secure GitHub webhook ingestion, narrow pull request event interpretation, and a durable review-job worker foundation. It contains no PR data retrieval or review processing, review publishing, tenant persistence, or AI integration.
 
 ## Requirements
 
@@ -45,7 +45,7 @@ Check readiness at `http://localhost:8080/actuator/health`. Only the health Actu
 
 On Windows, run `.\mvnw.cmd clean verify`. Integration tests start their own pinned PostgreSQL container and do not use the local Compose database.
 
-Flyway owns schema changes. V1 creates `github_webhook_deliveries`; M4 migration V2 creates `review_jobs` and its polling indexes and state constraints. Hibernate uses `ddl-auto: validate` and never creates or updates the schema.
+Flyway owns schema changes. V1 creates `github_webhook_deliveries`; V2 creates `review_jobs` and its polling indexes and state constraints; M5 migration V3 adds the optional all-or-none GitHub review target and its unique constraint. The nullable shape preserves M4 infrastructure-only placeholder jobs, while every M5 production job has all four target fields. Hibernate uses `ddl-auto: validate` and never creates or updates the schema.
 
 ## GitHub App authentication
 
@@ -67,7 +67,9 @@ The only M2 GitHub operation is the internal, read-only accessible-repository co
 
 The endpoint reads at most the configured limit plus one byte, verifies HMAC-SHA256 over the exact received bytes, validates bounded opaque delivery/event headers, validates one syntactically valid UTF-8 JSON value, and only then inserts a delivery. It stores the accepted payload as raw UTF-8 `TEXT`, preserving whitespace and key order for audit and future parsing. It never logs or echoes payloads, secrets, or signatures.
 
-New and duplicate valid deliveries return `202 Accepted`. PostgreSQL uniqueness on `github_delivery_id` plus `INSERT ... ON CONFLICT DO NOTHING` makes concurrent redelivery idempotent. A narrow insert transaction commits before acknowledgment. M3 deliberately performs no GitHub API call, event-specific parsing, review job creation, or other downstream work.
+New and duplicate valid deliveries return `202 Accepted`. PostgreSQL uniqueness on `github_delivery_id` plus `INSERT ... ON CONFLICT DO NOTHING` makes concurrent redelivery idempotent. M5 interprets only `pull_request` actions `opened`, `reopened`, and `synchronize`; other events and actions are accepted without jobs. A relevant event uses GitHub's top-level `number` plus `installation.id`, numeric `repository.id`, and `pull_request.head.sha`. Signed but incomplete relevant events are retained without jobs and acknowledged because redelivery cannot repair their schema.
+
+For a new valid reviewable event, webhook insertion and conflict-safe review-job insertion share one short transaction. A job failure rolls back the webhook, so GitHub receives a server failure and can redeliver. Duplicate deliveries do not reprocess; distinct deliveries for the same target still persist while the unique `(installation, repository, PR number, head SHA)` key creates only one job. Signature verification and JSON validation still occur before this transaction, and no GitHub API call or review work runs in the request.
 
 ## Review-job worker foundation
 
@@ -75,4 +77,4 @@ M4 stores review work in PostgreSQL with `READY`, `PROCESSING`, `COMPLETED`, and
 
 Expired `PROCESSING` leases are reclaimed by a later poll when attempts remain. An expired final attempt becomes `FAILED`. Retryable failures return to `READY` with deterministic `baseDelay * 2^(attempt-1)` backoff capped by the configured maximum; only a bounded safe error code is stored. Terminal failures and exhausted attempts become `FAILED` immediately. No payload, stack trace, external response, credential, or source content is stored in M4 jobs.
 
-The scheduler is disabled by default and invokes a separately testable poll-once worker. Configure it with `REVIEW_WORKER_ENABLED`, `REVIEW_WORKER_POLL_INTERVAL`, `REVIEW_WORKER_BATCH_SIZE`, `REVIEW_WORKER_LEASE_DURATION`, `REVIEW_JOB_MAX_ATTEMPTS`, `REVIEW_JOB_RETRY_BASE_DELAY`, and `REVIEW_JOB_RETRY_MAX_DELAY`. Spring duration syntax such as `5s` and `2m` is accepted. Redis/Kafka, distributed scheduling coordination, webhook-to-job creation, PR fields, and real review handling are intentionally deferred.
+The scheduler is disabled by default and invokes a separately testable poll-once worker. Configure it with `REVIEW_WORKER_ENABLED`, `REVIEW_WORKER_POLL_INTERVAL`, `REVIEW_WORKER_BATCH_SIZE`, `REVIEW_WORKER_LEASE_DURATION`, `REVIEW_JOB_MAX_ATTEMPTS`, `REVIEW_JOB_RETRY_BASE_DELAY`, and `REVIEW_JOB_RETRY_MAX_DELAY`. Spring duration syntax such as `5s` and `2m` is accepted. The M4 no-op handler now terminally rejects target-bearing jobs with a safe code, preventing false completion if the worker is enabled before a real handler exists. Redis/Kafka, distributed scheduling coordination, PR fetching, stale-revision cancellation, and real review handling remain deferred.

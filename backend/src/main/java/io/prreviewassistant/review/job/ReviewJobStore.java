@@ -9,6 +9,8 @@ public interface ReviewJobStore {
 
     ReviewJob create(int maxAttempts, Instant now);
 
+    ReviewJobCreationResult createForReviewTarget(ReviewTarget target, int maxAttempts, Instant now);
+
     List<ClaimedReviewJob> claimDue(Instant now, Duration leaseDuration, int batchSize);
 
     boolean complete(UUID jobId, UUID claimToken, Instant now);

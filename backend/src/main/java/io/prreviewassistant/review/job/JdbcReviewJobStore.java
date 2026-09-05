@@ -49,6 +49,40 @@ public class JdbcReviewJobStore implements ReviewJobStore {
 
     @Override
     @Transactional
+    public ReviewJobCreationResult createForReviewTarget(ReviewTarget target, int maxAttempts, Instant now) {
+        if (target == null) {
+            throw new IllegalArgumentException("target must not be null");
+        }
+        if (maxAttempts <= 0) {
+            throw new IllegalArgumentException("maxAttempts must be positive");
+        }
+        UUID id = identifiers.newJobId();
+        OffsetDateTime timestamp = utc(now);
+        int rows = jdbcClient.sql("""
+                        INSERT INTO review_jobs
+                            (id, status, attempts, max_attempts, next_attempt_at,
+                             github_installation_id, github_repository_id,
+                             github_pull_request_number, github_head_sha,
+                             created_at, updated_at)
+                        VALUES (:id, 'READY', 0, :maxAttempts, :now,
+                                :installationId, :repositoryId, :pullRequestNumber, :headSha,
+                                :now, :now)
+                        ON CONFLICT (github_installation_id, github_repository_id,
+                                     github_pull_request_number, github_head_sha) DO NOTHING
+                        """)
+                .param("id", id)
+                .param("maxAttempts", maxAttempts)
+                .param("now", timestamp)
+                .param("installationId", target.installationId())
+                .param("repositoryId", target.repositoryId())
+                .param("pullRequestNumber", target.pullRequestNumber())
+                .param("headSha", target.headSha())
+                .update();
+        return rows == 1 ? ReviewJobCreationResult.CREATED : ReviewJobCreationResult.ALREADY_EXISTS;
+    }
+
+    @Override
+    @Transactional
     public List<ClaimedReviewJob> claimDue(Instant now, Duration leaseDuration, int batchSize) {
         if (leaseDuration == null || leaseDuration.isZero() || leaseDuration.isNegative()) {
             throw new IllegalArgumentException("leaseDuration must be positive");
@@ -60,7 +94,9 @@ public class JdbcReviewJobStore implements ReviewJobStore {
         OffsetDateTime timestamp = utc(now);
         expireExhaustedClaims(timestamp, batchSize);
         List<ClaimCandidate> candidates = jdbcClient.sql("""
-                        SELECT id, attempts, max_attempts
+                        SELECT id, attempts, max_attempts,
+                               github_installation_id, github_repository_id,
+                               github_pull_request_number, github_head_sha
                         FROM review_jobs
                         WHERE (status = 'READY' AND next_attempt_at <= :now)
                            OR (status = 'PROCESSING'
@@ -75,7 +111,12 @@ public class JdbcReviewJobStore implements ReviewJobStore {
                 .query((resultSet, rowNumber) -> new ClaimCandidate(
                         resultSet.getObject("id", UUID.class),
                         resultSet.getInt("attempts"),
-                        resultSet.getInt("max_attempts")))
+                        resultSet.getInt("max_attempts"),
+                        reviewTarget(
+                                resultSet.getObject("github_installation_id", Long.class),
+                                resultSet.getObject("github_repository_id", Long.class),
+                                resultSet.getObject("github_pull_request_number", Integer.class),
+                                resultSet.getString("github_head_sha"))))
                 .list();
 
         Instant expiresAt = now.plus(leaseDuration);
@@ -100,7 +141,7 @@ public class JdbcReviewJobStore implements ReviewJobStore {
                     .param("id", candidate.id())
                     .update();
             claims.add(new ClaimedReviewJob(candidate.id(), claimToken, attempt,
-                    candidate.maxAttempts(), now, expiresAt));
+                    candidate.maxAttempts(), now, expiresAt, candidate.reviewTarget()));
         }
         return List.copyOf(claims);
     }
@@ -213,6 +254,13 @@ public class JdbcReviewJobStore implements ReviewJobStore {
         return instant.atOffset(ZoneOffset.UTC);
     }
 
-    private record ClaimCandidate(UUID id, int attempts, int maxAttempts) {
+    private ReviewTarget reviewTarget(Long installationId, Long repositoryId, Integer pullRequestNumber, String headSha) {
+        if (installationId == null) {
+            return null;
+        }
+        return new ReviewTarget(installationId, repositoryId, pullRequestNumber, headSha);
+    }
+
+    private record ClaimCandidate(UUID id, int attempts, int maxAttempts, ReviewTarget reviewTarget) {
     }
 }
