@@ -38,6 +38,12 @@ github:
     max-body-size: ${GITHUB_WEBHOOK_MAX_BODY_SIZE:1MB}
 
 review:
+  pull-request-fetch:
+    max-files: ${PR_FETCH_MAX_FILES:1000}
+    max-patch-size-per-file: ${PR_FETCH_MAX_PATCH_BYTES_PER_FILE:256KB}
+    max-total-patch-size: ${PR_FETCH_MAX_TOTAL_PATCH_BYTES:5MB}
+    max-pages: ${PR_FETCH_MAX_PAGES:10}
+    max-page-response-size: ${PR_FETCH_MAX_RESPONSE_BODY_SIZE:8MB}
   job:
     max-attempts: ${REVIEW_JOB_MAX_ATTEMPTS:3}
     retry-base-delay: ${REVIEW_JOB_RETRY_BASE_DELAY:10s}

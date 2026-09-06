@@ -499,7 +499,7 @@ class ReviewJobPersistenceIntegrationTest {
     }
 
     @Test
-    void productionNoOpHandlerCannotSilentlyCompleteARealReviewJob() {
+    void productionRetrievalHandlerCannotSilentlyCompleteARealReviewJob() {
         ReviewTarget target = new ReviewTarget(101, 202, 42, "a".repeat(40));
         assertThat(store.createForReviewTarget(target, 3, NOW))
                 .isEqualTo(ReviewJobCreationResult.CREATED);
@@ -527,7 +527,7 @@ class ReviewJobPersistenceIntegrationTest {
                 .single();
         assertThat(stored.status()).isEqualTo("FAILED");
         assertThat(stored.completedAt()).isNull();
-        assertThat(stored.lastErrorCode()).isEqualTo("REVIEW_HANDLER_NOT_IMPLEMENTED");
+        assertThat(stored.lastErrorCode()).isEqualTo("GITHUB_LOCAL_CONFIGURATION_INVALID");
     }
 
     private record StoredTarget(long installationId, long repositoryId, int pullRequestNumber, String headSha) {

@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M5, the Spring Boot/PostgreSQL foundation, GitHub App authentication boundary, durable webhook ingestion, narrow pull request event interpretation, and revision-specific review-job lifecycle exist; PR data retrieval and the review pipeline remain unimplemented.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M6, the Spring Boot/PostgreSQL foundation, GitHub App authentication, durable webhook/job lifecycle, and bounded exact-revision PR/changed-file retrieval exist; repository-context discovery, analysis, and publication remain unimplemented.
 
 ## System context
 
@@ -38,11 +38,11 @@ Stores durable product state and review jobs. For a new reviewable delivery, its
 
 ### Review worker
 
-Claims durable jobs in deterministic due/creation/ID order, commits the claim, then executes work outside a database transaction. Completion, retry, and failure use separate short ownership-checked transactions. The scheduler remains disabled by default. The infrastructure no-op handler succeeds only for targetless M4 fixtures and terminally refuses real target-bearing jobs, so M5 work cannot be falsely completed. Later handlers must remain retry-safe; exactly-once execution is not promised.
+Claims durable jobs in deterministic due/creation/ID order, commits the claim, then executes work outside a database transaction. Completion, retry, and failure use separate short ownership-checked transactions. The scheduler remains disabled by default. M6 retrieves target-bearing work and translates only safe classifications to queue transitions; successful retrieval terminates as analysis-not-implemented rather than falsely completing a review. Later external effects must remain retry-safe; exactly-once execution is not promised.
 
 ### GitHub integration
 
-Creates short-lived installation credentials, retrieves the minimum authorized context, observes API budgets, and will eventually publish reviews. M2 implements only App JWT creation, installation-token exchange/cache, and a narrow read-only accessible-repository operation. Installation identity is supplied per operation, and credentials never leave this server-side boundary. GitHub payloads and content are translated and validated here; GitHub-specific types do not define the domain model.
+Creates short-lived installation credentials and retrieves minimum authorized context. M6 reuses M2 tokens to resolve a numeric repository ID, fetch PR metadata, verify exact revision identity, and paginate changed-file metadata through derived requests. Redirects are disabled, pagination URLs are never followed, responses are operation-bounded, and remote errors omit bodies/credentials. Provider DTOs are normalized into an immutable in-memory snapshot; GitHub-specific types do not define later review policy.
 
 ### Deterministic analysis
 
@@ -84,7 +84,7 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication infrastructure, the webhook endpoint, and an optional scheduled job poller. Installation tokens are cached only within the process; multi-instance cache coordination is deferred. Database locks and claim tokens make job ownership safe across multiple backend processes. PostgreSQL stores accepted webhook envelopes and immutable M5 review targets, but no GitHub credentials, tenant/install records, fetched PR content, or findings. The frontend and deployment topology remain undecided.
+The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, and a disabled-by-default job poller. Database locks and claim tokens make ownership safe across processes. PostgreSQL stores webhook envelopes and immutable targets, but no credentials, fetched PR snapshots, patches, or findings. M6 snapshots exist only during retrieval. The frontend and deployment topology remain undecided.
 
 ## Decision records
 

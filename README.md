@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. Milestone M5 atomically turns supported pull request webhooks into revision-specific durable review jobs; pull request data retrieval and review processing are not implemented.
+> Project status: **pre-alpha**. Milestone M6 securely retrieves and bounds the exact pull request revision and changed-file data for durable review jobs; analysis and review publishing are not implemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -33,7 +33,7 @@ The API and worker are logical components of the backend. PostgreSQL is the init
 - OpenAPI
 - OpenAI behind an internal provider abstraction
 
-The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App authentication client, signed webhook ingestion, revision-specific pull request event interpretation, and a PostgreSQL-backed review-job worker foundation. The frontend and actual review pipeline remain uninitialized.
+The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App client, signed webhook ingestion, revision-specific jobs, and bounded pull request metadata/changed-file retrieval. The frontend and review analysis/publication pipeline remain uninitialized.
 
 ## Repository layout
 
@@ -86,4 +86,4 @@ After startup, `GET http://localhost:8080/actuator/health` is the operational en
 
 ## Current milestone
 
-M5 supports signed `pull_request` actions `opened`, `reopened`, and `synchronize`. It extracts the installation ID, numeric repository ID, top-level pull request number, and head Git object ID, then atomically commits the accepted webhook and an idempotent `READY` job. Delivery ID deduplicates transport redelivery; the four-part review target independently deduplicates the same revision across distinct deliveries. Other events/actions and signed but incomplete relevant payloads are durably accepted without jobs. No GitHub API call occurs. PR fetching, tenant mapping, stale-job cancellation, real review handling/publication, AI, frontend, OpenAPI, and CI/CD remain deferred.
+M6 resolves the target repository through authenticated numeric-ID metadata, fetches the PR, verifies its number, repository ID, and exact expected head revision, then retrieves every changed-file page through derived same-client requests. A changed head returns `STALE` before file retrieval. Snapshots are immutable and in-memory; paths, counts, pages, response bodies, file count, and patch bytes are bounded, while missing/binary patches remain explicitly unavailable. Rate limits and transient failures retry through M4; stale, inaccessible, malformed, and oversized work terminates with safe codes. The worker remains disabled by default, and even a successful fetch terminates as analysis-not-implemented rather than claiming a completed review. Arbitrary repository context, analysis, AI, snapshot persistence, and publishing remain deferred.
