@@ -4,7 +4,7 @@
 
 Testing must provide confidence in behavior, boundaries, tenant isolation, idempotency, retry safety, concurrency, provider contracts, and safe failure. Tests should be deterministic, readable, and proportionate to risk. The default suite must not depend on live GitHub, a live AI provider, or developer-owned infrastructure.
 
-M1 establishes the backend foundation tests. M2 adds deterministic authentication, HTTP contract, cache concurrency, and secret tests. M3 covers exact-byte webhooks and durable idempotency. M4 covers deterministic leased queue and multi-worker concurrency. M5 covers revision-target ingestion and atomic job creation. M6 adds loopback repository/PR/files contracts, derived pagination, redirect and secret-exfiltration regression tests, exact-head/repository checks, optional-patch normalization, immutable snapshots, layered size limits, safe failure classification, and the non-completion worker boundary. The remaining categories below become requirements as corresponding behavior is implemented.
+M1 establishes the backend foundation tests. M2 adds authentication and cache tests; M3 covers exact-byte webhooks; M4 covers leased queue concurrency; M5 covers atomic revision jobs; M6 covers bounded PR retrieval. M7 adds exact-SHA Contents API contracts, deterministic language/import selection, generated/vendor suppression, budget accounting, binary/encoding omissions, request deduplication, secret-safe models, and the non-completion worker boundary. The remaining categories below become requirements as corresponding behavior is implemented.
 
 ## Test layers
 

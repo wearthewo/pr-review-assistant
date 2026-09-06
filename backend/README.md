@@ -69,6 +69,14 @@ The default ceilings are 1,000 files, 10 pages, 256 KiB per retained patch, 5 Mi
 
 Snapshots live only in memory and contain numeric identity, head/base SHAs, draft state, and bounded changed-file metadata. Repository paths remain opaque strings: they are never resolved or opened locally. Patches are untrusted data, never logged or placed in errors, and are not interpreted as instructions. No raw blobs or surrounding files are fetched.
 
+## Repository context
+
+M7 selects minimum sufficient context from M6 patches. It fetches a changed file only when its patch is unavailable and considers confidently local Java, JavaScript/TypeScript, and Python imports plus bounded companion candidates. Documentation, generated/vendor output, lockfiles, package imports, and unsupported-language guesses cause no extra request. Candidates are ranked by controlled reason, estimated cost, and path; duplicate path/revision pairs are fetched once.
+
+Source uses `GET /repos/{owner}/{repo}/contents/{path}?ref={immutable_sha}` with M2 installation authentication. HEAD is normal and BASE is explicit for deleted files. Download URLs, redirects, repository cloning, filesystem paths, branch names, and recursive trees are never used. UTF-8 text is retained whole when it fits. A larger file is retained only as an explicitly incomplete window around one uniquely located declaration anchor; without that evidence it is omitted as `NO_RELEVANT_FRAGMENT`. Binary/NUL, invalid UTF-8, missing, and oversized optional context also become omissions. Relevant omission is preferable to irrelevant inclusion because arbitrary context has negative request, token, and distraction cost.
+
+Defaults are 12 retained files, 128 KiB per file, 512 KiB total, 200 retained lines, 100 candidates, and 20 GitHub requests. `REVIEW_CONTEXT_*` variables configure bounded ceilings. These are source-byte limits, not model-token limits. More context is not automatically better context. M7 uses deterministic heuristics and does not invoke AI.
+
 ## GitHub webhook ingestion
 
 `POST /api/webhooks/github` accepts only `application/json` and requires `X-Hub-Signature-256`, `X-GitHub-Delivery`, and `X-GitHub-Event`. Configure the same random, high-entropy secret in the GitHub App and `GITHUB_WEBHOOK_SECRET`; the App private key and webhook secret are independent credentials. `GITHUB_WEBHOOK_MAX_BODY_SIZE` defaults to `1MB` and may not exceed GitHub's 25 MiB payload cap.

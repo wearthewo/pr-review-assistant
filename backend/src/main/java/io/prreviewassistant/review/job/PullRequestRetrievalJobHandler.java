@@ -4,15 +4,19 @@ import io.prreviewassistant.github.auth.GitHubErrorType;
 import io.prreviewassistant.github.auth.GitHubException;
 import io.prreviewassistant.review.retrieval.PullRequestLoadResult;
 import io.prreviewassistant.review.retrieval.PullRequestLoader;
+import io.prreviewassistant.review.context.ReviewContextBuildResult;
+import io.prreviewassistant.review.context.ReviewContextBuilder;
 import org.springframework.stereotype.Component;
 
 @Component
 final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
 
     private final PullRequestLoader loader;
+    private final ReviewContextBuilder contextBuilder;
 
-    PullRequestRetrievalJobHandler(PullRequestLoader loader) {
+    PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder) {
         this.loader = loader;
+        this.contextBuilder = contextBuilder;
     }
 
     @Override
@@ -23,13 +27,20 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
         try {
             PullRequestLoadResult result = loader.load(job.reviewTarget());
             return switch (result.outcome()) {
-                case READY -> ReviewJobExecutionResult.terminal("REVIEW_ANALYSIS_NOT_IMPLEMENTED");
+                case READY -> handleContext(contextBuilder.build(result.snapshot()));
                 case STALE -> ReviewJobExecutionResult.terminal("STALE_PULL_REQUEST_REVISION");
                 case TOO_LARGE -> ReviewJobExecutionResult.terminal("PULL_REQUEST_TOO_LARGE");
             };
         } catch (GitHubException exception) {
             return map(exception.type());
         }
+    }
+
+    private ReviewJobExecutionResult handleContext(ReviewContextBuildResult result) {
+        return switch (result.outcome()) {
+            case READY, PARTIAL -> ReviewJobExecutionResult.terminal("REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED");
+            case UNAVAILABLE -> ReviewJobExecutionResult.terminal("REVIEW_CONTEXT_UNAVAILABLE");
+        };
     }
 
     private ReviewJobExecutionResult map(GitHubErrorType type) {

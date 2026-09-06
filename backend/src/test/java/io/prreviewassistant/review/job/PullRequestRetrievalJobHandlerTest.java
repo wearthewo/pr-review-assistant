@@ -12,6 +12,7 @@ import io.prreviewassistant.github.auth.GitHubException;
 import io.prreviewassistant.review.retrieval.PullRequestLoadResult;
 import io.prreviewassistant.review.retrieval.PullRequestLoader;
 import io.prreviewassistant.review.retrieval.PullRequestSnapshot;
+import io.prreviewassistant.review.context.*;
 import org.junit.jupiter.api.Test;
 
 class PullRequestRetrievalJobHandlerTest {
@@ -22,7 +23,7 @@ class PullRequestRetrievalJobHandlerTest {
     void successfulRetrievalNeverMarksReviewCompletedBeforeAnalysisExists() {
         assertOutcome(PullRequestLoadResult.ready(new PullRequestSnapshot(
                         1, 2, 3, "a".repeat(40), "b".repeat(40), false, List.of())),
-                ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE, "REVIEW_ANALYSIS_NOT_IMPLEMENTED");
+                ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE, "REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED");
     }
 
     @Test
@@ -54,7 +55,7 @@ class PullRequestRetrievalJobHandlerTest {
     @Test
     void retainsM4TargetlessFixtureBehavior() {
         PullRequestLoader loader = mock(PullRequestLoader.class);
-        ReviewJobExecutionResult result = new PullRequestRetrievalJobHandler(loader).handle(claim(null));
+        ReviewJobExecutionResult result = new PullRequestRetrievalJobHandler(loader, mock(ReviewContextBuilder.class)).handle(claim(null));
 
         assertThat(result.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.SUCCESS);
     }
@@ -66,7 +67,13 @@ class PullRequestRetrievalJobHandlerTest {
         PullRequestLoader loader = mock(PullRequestLoader.class);
         when(loader.load(TARGET)).thenReturn(loadResult);
 
-        ReviewJobExecutionResult result = new PullRequestRetrievalJobHandler(loader).handle(claim(TARGET));
+        ReviewContextBuilder contextBuilder = mock(ReviewContextBuilder.class);
+        if (loadResult.outcome() == PullRequestLoadResult.Outcome.READY) {
+            ReviewContext context = new ReviewContext(TARGET, loadResult.snapshot(), List.of(),
+                    new ContextBudgetUsage(0, 0, 0, 0, 0, 0, false));
+            when(contextBuilder.build(loadResult.snapshot())).thenReturn(ReviewContextBuildResult.ready(context));
+        }
+        ReviewJobExecutionResult result = new PullRequestRetrievalJobHandler(loader, contextBuilder).handle(claim(TARGET));
 
         assertThat(result.outcome()).isEqualTo(outcome);
         assertThat(result.errorCode().value()).isEqualTo(errorCode);
@@ -79,7 +86,7 @@ class PullRequestRetrievalJobHandlerTest {
         PullRequestLoader loader = mock(PullRequestLoader.class);
         when(loader.load(TARGET)).thenThrow(failure);
 
-        ReviewJobExecutionResult result = new PullRequestRetrievalJobHandler(loader).handle(claim(TARGET));
+        ReviewJobExecutionResult result = new PullRequestRetrievalJobHandler(loader, mock(ReviewContextBuilder.class)).handle(claim(TARGET));
 
         assertThat(result.outcome()).isEqualTo(outcome);
         assertThat(result.errorCode().value()).isEqualTo(errorCode);

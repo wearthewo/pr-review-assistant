@@ -38,6 +38,15 @@ github:
     max-body-size: ${GITHUB_WEBHOOK_MAX_BODY_SIZE:1MB}
 
 review:
+  context:
+    enabled: ${REVIEW_CONTEXT_ENABLED:true}
+    max-files: ${REVIEW_CONTEXT_MAX_FILES:12}
+    max-file-size: ${REVIEW_CONTEXT_MAX_FILE_BYTES:128KB}
+    max-total-size: ${REVIEW_CONTEXT_MAX_TOTAL_BYTES:512KB}
+    max-changed-file-size: ${REVIEW_CONTEXT_MAX_CHANGED_FILE_BYTES:128KB}
+    max-lines-per-file: ${REVIEW_CONTEXT_MAX_LINES_PER_FILE:200}
+    max-candidates: ${REVIEW_CONTEXT_MAX_CANDIDATES:100}
+    max-api-requests: ${REVIEW_CONTEXT_MAX_API_REQUESTS:20}
   pull-request-fetch:
     max-files: ${PR_FETCH_MAX_FILES:1000}
     max-patch-size-per-file: ${PR_FETCH_MAX_PATCH_BYTES_PER_FILE:256KB}
