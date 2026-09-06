@@ -11,11 +11,15 @@ final class GitHubResponseErrors {
 
     static GitHubException map(HttpStatusCode status, HttpHeaders headers, boolean installationTokenRequest) {
         if (status.value() == 429
-                || (status.value() == 403 && "0".equals(headers.getFirst("X-RateLimit-Remaining")))) {
+                || (status.value() == 403 && ("0".equals(headers.getFirst("X-RateLimit-Remaining"))
+                || headers.getFirst("Retry-After") != null))) {
             return GitHubException.rateLimited();
         }
         if (status.value() == 404 && installationTokenRequest) {
             return GitHubException.installationNotFound();
+        }
+        if (status.value() == 404) {
+            return GitHubException.resourceNotFound();
         }
         if (status.value() == 401 || status.value() == 403) {
             return GitHubException.authenticationRejected();

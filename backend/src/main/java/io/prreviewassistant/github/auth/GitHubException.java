@@ -43,6 +43,12 @@ public final class GitHubException extends RuntimeException {
                 "The GitHub App installation was not found or is not accessible.");
     }
 
+    public static GitHubException resourceNotFound() {
+        return new GitHubException(
+                GitHubErrorType.RESOURCE_NOT_FOUND,
+                "The requested GitHub resource was not found or is not accessible.");
+    }
+
     public static GitHubException rateLimited() {
         return new GitHubException(
                 GitHubErrorType.RATE_LIMITED,
@@ -59,5 +65,11 @@ public final class GitHubException extends RuntimeException {
         return new GitHubException(
                 GitHubErrorType.MALFORMED_RESPONSE,
                 "GitHub returned an invalid response.");
+    }
+
+    public static GitHubException responseTooLarge() {
+        return new GitHubException(
+                GitHubErrorType.RESPONSE_TOO_LARGE,
+                "GitHub returned a response that exceeds the configured safety limit.");
     }
 }

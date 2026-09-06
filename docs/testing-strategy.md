@@ -4,7 +4,7 @@
 
 Testing must provide confidence in behavior, boundaries, tenant isolation, idempotency, retry safety, concurrency, provider contracts, and safe failure. Tests should be deterministic, readable, and proportionate to risk. The default suite must not depend on live GitHub, a live AI provider, or developer-owned infrastructure.
 
-M1 establishes a Spring context test and a PostgreSQL Testcontainers integration test for the backend foundation. M2 adds deterministic JWT/key-format tests, loopback GitHub HTTP contract tests, cache concurrency tests, and secret-regression assertions. M3 adds exact-byte webhook signature and HTTP contract tests plus PostgreSQL migration, persistence, uniqueness, and synchronized duplicate-delivery concurrency tests. M4 adds deterministic retry/worker unit tests and PostgreSQL lease, ownership, `SKIP LOCKED`, transition, and multi-worker concurrency tests. M5 adds narrow pull request policy/parser tests, revision-key persistence and uniqueness tests, signed webhook-to-job tests, transaction rollback injection, no-op safety, and concurrent distinct-delivery/same-target coverage. The remaining categories below become requirements as corresponding behavior is implemented.
+M1 establishes the backend foundation tests. M2 adds deterministic authentication, HTTP contract, cache concurrency, and secret tests. M3 covers exact-byte webhooks and durable idempotency. M4 covers deterministic leased queue and multi-worker concurrency. M5 covers revision-target ingestion and atomic job creation. M6 adds loopback repository/PR/files contracts, derived pagination, redirect and secret-exfiltration regression tests, exact-head/repository checks, optional-patch normalization, immutable snapshots, layered size limits, safe failure classification, and the non-completion worker boundary. The remaining categories below become requirements as corresponding behavior is implemented.
 
 ## Test layers
 
@@ -29,6 +29,8 @@ Validate both inbound and outbound boundaries:
 - the internal AI provider contract across provider adapters, including structured success, throttling, timeout, malformed output, and refusal/failure cases.
 
 Provider contract tests use fakes or controlled mock servers by default. Optional live-provider tests must be separately invoked, credential-safe, bounded in cost, and never required for routine contribution.
+
+M6 GitHub contract tests assert installation-scoped authorization, shared Accept/version headers, repository-ID resolution, exact request paths, multi-page termination, missing/renamed/removed/unknown file variants, malformed and oversized responses, 401/403/404/429/5xx/timeout classification, disabled redirects, and refusal to follow untrusted pagination URLs. Loader tests separately prove exact-revision short-circuiting and all in-memory bounds without live GitHub.
 
 ### Webhook fixture tests
 

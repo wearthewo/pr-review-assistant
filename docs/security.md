@@ -67,8 +67,19 @@ This document defines required controls. Concrete libraries, schemas, thresholds
 - A signed but malformed relevant event is retained as an accepted delivery without a job and without logging payload-derived error detail. This avoids futile GitHub retries for permanently unprocessable content.
 - A new reviewable delivery and its job commit in one short transaction. Job insertion failure rolls back the webhook; duplicate-target conflict is a normal result that still permits a distinct delivery to commit.
 - Webhook delivery ID protects transport idempotency. A separate database unique key over installation, numeric repository, PR number, and head SHA protects business idempotency across deliveries and repository renames.
-- Installation identity is explicit in every M5 job and will select M2 credentials later. Internal tenant resolution and authorization are still required before outbound GitHub access.
-- The disabled-by-default M4 no-op handler terminally refuses target-bearing jobs, so enabling it cannot falsely mark a real review as completed. M5 performs no GitHub API or AI call.
+- Installation identity is explicit in every M5 job and selects M2 credentials during M6 retrieval. Internal tenant resolution and authorization remain required before production outbound enablement.
+- M5 itself performs no GitHub API or AI call. M6 replaces the no-op boundary without allowing retrieval to masquerade as a completed review.
+
+### Pull request retrieval controls implemented in M6
+
+- Every request uses the target's installation ID with the existing M2 cache. Tokens remain opaque, process-local, unlogged, and unpersisted.
+- Mutable owner/name addressing is obtained from authenticated `GET /repositories/{id}` data, bounded, and checked against the target's numeric repository ID. The PR number and base repository ID are rechecked before use.
+- The returned head SHA must exactly match the immutable target before file retrieval. A mismatch is terminal stale work, not a retry and not permission to analyze a newer revision.
+- HTTP redirects are disabled. A `Link` header can only indicate another page; its URL is never requested. Subsequent URLs are derived from the configured GitHub base URL and bounded numeric page counter.
+- Metadata and each files response are byte-bounded. Page count, file count, repository-path length, per-file patch bytes, and total patch bytes are validated. Limits produce explicit unavailable/too-large states rather than silent truncation.
+- Missing patches and binary-file metadata are accepted without fetching blobs. Repository paths remain opaque identifiers and are never resolved against the server filesystem.
+- Patches, paths, and GitHub error bodies are untrusted source data. They are absent from application logs, exception messages, persisted error codes, and string representations; patch text cannot issue instructions or gain capabilities.
+- Only bounded classifications cross into job state. Rate limits and transient transport/5xx failures retry; stale, inaccessible, malformed, and excessive inputs terminate. Successful retrieval is not reported as a completed review while analysis is absent.
 
 ## Untrusted repository and model content
 

@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, an internal GitHub App authentication/client boundary, secure GitHub webhook ingestion, narrow pull request event interpretation, and a durable review-job worker foundation. It contains no PR data retrieval or review processing, review publishing, tenant persistence, or AI integration.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, a durable worker, and bounded exact-revision pull request retrieval. It contains no review analysis, publishing, tenant persistence, arbitrary repository-context retrieval, or AI integration.
 
 ## Requirements
 
@@ -59,7 +59,15 @@ GitHub downloads App keys as PKCS#1 RSA PEM files; both that format and PKCS#8 P
 
 The backend signs a short-lived RS256 App JWT, exchanges it for an installation token, and caches that opaque token by operation-supplied installation ID. A five-minute refresh window prevents use near expiry, and concurrent refreshes for the same installation share one request. The cache is process-local; distributed coordination and Redis are intentionally deferred until multi-instance requirements demonstrate a need.
 
-The only M2 GitHub operation is the internal, read-only accessible-repository count used to prove the boundary. There is no public controller or live-GitHub dependency in automated tests.
+M2's read-only accessible-repository operation remains. M6 adds internal read-only repository metadata, pull request metadata, and changed-file operations. All use operation-supplied installation IDs and the same cached opaque installation-token boundary; there is no public controller or live-GitHub dependency in automated tests.
+
+## Pull request retrieval
+
+M6 first calls `GET /repositories/{repository_id}` to resolve the authenticated owner/name required by GitHub's pull endpoints, verifies the numeric ID, then calls `GET /repos/{owner}/{repo}/pulls/{number}` and verifies the returned PR number, base-repository ID, and exact expected head SHA. A changed head returns `STALE` before any file request. Files come from `GET /repos/{owner}/{repo}/pulls/{number}/files?per_page=100&page=N`. The client reads only whether the `Link` header contains `rel="next"`; it derives the next request itself and never follows a response-provided URL. HTTP redirects are disabled.
+
+The default ceilings are 1,000 files, 10 pages, 256 KiB per retained patch, 5 MiB total patch input, and 8 MiB per files response. Metadata responses are capped at 512 KiB. Configure these with `PR_FETCH_MAX_FILES`, `PR_FETCH_MAX_PAGES`, `PR_FETCH_MAX_PATCH_BYTES_PER_FILE`, `PR_FETCH_MAX_TOTAL_PATCH_BYTES`, and `PR_FETCH_MAX_RESPONSE_BODY_SIZE`. Exceeding a whole-PR/response limit returns `TOO_LARGE`; an individual oversized patch is explicitly unavailable and never silently truncated. Missing patches, including binary files, are valid metadata-only entries.
+
+Snapshots live only in memory and contain numeric identity, head/base SHAs, draft state, and bounded changed-file metadata. Repository paths remain opaque strings: they are never resolved or opened locally. Patches are untrusted data, never logged or placed in errors, and are not interpreted as instructions. No raw blobs or surrounding files are fetched.
 
 ## GitHub webhook ingestion
 
@@ -73,8 +81,8 @@ For a new valid reviewable event, webhook insertion and conflict-safe review-job
 
 ## Review-job worker foundation
 
-M4 stores review work in PostgreSQL with `READY`, `PROCESSING`, `COMPLETED`, and `FAILED` states. A JDBC claim transaction selects a bounded due batch in `next_attempt_at`, `created_at`, `id` order using `FOR UPDATE SKIP LOCKED`, increments attempts, and assigns each row a fresh UUID claim token and expiring lease. The transaction commits before the no-op M4 handler runs. Completion, retry, and failure are separate short transactions whose conditional updates require both job ID and the current claim token.
+M4 stores review work in PostgreSQL with `READY`, `PROCESSING`, `COMPLETED`, and `FAILED` states. A JDBC claim transaction selects a bounded due batch in `next_attempt_at`, `created_at`, `id` order using `FOR UPDATE SKIP LOCKED`, increments attempts, and assigns each row a fresh UUID claim token and expiring lease. The transaction commits before retrieval runs. Completion, retry, and failure are separate short transactions whose conditional updates require both job ID and the current claim token.
 
 Expired `PROCESSING` leases are reclaimed by a later poll when attempts remain. An expired final attempt becomes `FAILED`. Retryable failures return to `READY` with deterministic `baseDelay * 2^(attempt-1)` backoff capped by the configured maximum; only a bounded safe error code is stored. Terminal failures and exhausted attempts become `FAILED` immediately. No payload, stack trace, external response, credential, or source content is stored in M4 jobs.
 
-The scheduler is disabled by default and invokes a separately testable poll-once worker. Configure it with `REVIEW_WORKER_ENABLED`, `REVIEW_WORKER_POLL_INTERVAL`, `REVIEW_WORKER_BATCH_SIZE`, `REVIEW_WORKER_LEASE_DURATION`, `REVIEW_JOB_MAX_ATTEMPTS`, `REVIEW_JOB_RETRY_BASE_DELAY`, and `REVIEW_JOB_RETRY_MAX_DELAY`. Spring duration syntax such as `5s` and `2m` is accepted. The M4 no-op handler now terminally rejects target-bearing jobs with a safe code, preventing false completion if the worker is enabled before a real handler exists. Redis/Kafka, distributed scheduling coordination, PR fetching, stale-revision cancellation, and real review handling remain deferred.
+The scheduler is disabled by default and invokes a separately testable poll-once worker. Configure it with `REVIEW_WORKER_ENABLED`, `REVIEW_WORKER_POLL_INTERVAL`, `REVIEW_WORKER_BATCH_SIZE`, `REVIEW_WORKER_LEASE_DURATION`, `REVIEW_JOB_MAX_ATTEMPTS`, `REVIEW_JOB_RETRY_BASE_DELAY`, and `REVIEW_JOB_RETRY_MAX_DELAY`. Rate-limit and transient GitHub failures retry; stale revisions, inaccessible resources, malformed responses, and excessive PRs terminate with bounded codes. Successful retrieval ends as `REVIEW_ANALYSIS_NOT_IMPLEMENTED`, never `COMPLETED`. Redis/Kafka, analysis, surrounding-file context, snapshot persistence, and review publication remain deferred.
