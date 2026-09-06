@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.Base64;
 
 import io.prreviewassistant.github.auth.GitHubErrorType;
 import io.prreviewassistant.github.auth.GitHubException;
@@ -158,6 +159,38 @@ class GitHubPullRequestApiClientTest {
                 "../../secret-path", null, "modified", 1, 1, 2, "fake-token-in-patch");
 
         assertThat(file.toString()).doesNotContain("../../secret-path", "fake-token-in-patch");
+    }
+
+    @Test
+    void retrievesRepositoryFileAtExactImmutableRevisionAndRedactsContent() throws Exception {
+        String source = "secret-shaped-source";
+        try (GitHubMockServer server = new GitHubMockServer()) {
+            server.enqueue(200, "{\"type\":\"file\",\"encoding\":\"base64\",\"size\":"
+                    + source.length() + ",\"content\":\""
+                    + Base64.getEncoder().encodeToString(source.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+                    + "\"}");
+            GitHubRepositoryFile file = client(server, new AtomicLong()).getRepositoryFile(
+                    71, "octo-org", "safe-repo", "src/unicode-λ.java", HEAD, 4096);
+            assertThat(new String(file.content(), java.nio.charset.StandardCharsets.UTF_8)).isEqualTo(source);
+            assertThat(file.toString()).doesNotContain(source);
+            assertRequest(server.onlyRequest(), "/repos/octo-org/safe-repo/contents/src/unicode-λ.java", "ref=" + HEAD);
+        }
+    }
+
+    @Test
+    void rejectsMalformedContentAndUnsafePathWithoutLeakingSource() throws Exception {
+        try (GitHubMockServer server = new GitHubMockServer()) {
+            server.enqueue(200, "{\"type\":\"file\",\"encoding\":\"base64\",\"size\":2,\"content\":\"%%%fake-secret\"}");
+            assertError(() -> client(server, new AtomicLong()).getRepositoryFile(
+                    71, "octo-org", "safe-repo", "src/A.java", HEAD, 4096),
+                    GitHubErrorType.MALFORMED_RESPONSE, "fake-secret");
+        }
+        try (GitHubMockServer server = new GitHubMockServer()) {
+            assertError(() -> client(server, new AtomicLong()).getRepositoryFile(
+                    71, "octo-org", "safe-repo", "../../etc/passwd", HEAD, 4096),
+                    GitHubErrorType.MALFORMED_RESPONSE, "passwd");
+            assertThat(server.requests()).isEmpty();
+        }
     }
 
     private void assertHttpError(int status, Map<String, String> headers, GitHubErrorType expected)

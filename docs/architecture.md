@@ -44,6 +44,12 @@ Claims durable jobs in deterministic due/creation/ID order, commits the claim, t
 
 Creates short-lived installation credentials and retrieves minimum authorized context. M6 reuses M2 tokens to resolve a numeric repository ID, fetch PR metadata, verify exact revision identity, and paginate changed-file metadata through derived requests. Redirects are disabled, pagination URLs are never followed, responses are operation-bounded, and remote errors omit bodies/credentials. Provider DTOs are normalized into an immutable in-memory snapshot; GitHub-specific types do not define later review policy.
 
+### Repository context engine
+
+Consumes only an exact M6 snapshot, discovers bounded candidates from changed paths and patches, and retrieves selected UTF-8 source through the authenticated GitHub boundary at explicit HEAD or BASE SHAs. It produces an immutable, ephemeral `ReviewContext` with provenance, controlled reasons, omissions, and budget usage. It neither clones repositories nor persists source, follows URLs, invokes AI, or performs review analysis. More context is not automatically better context.
+
+Whole files are retained only when they fit. Larger content requires a unique deterministic declaration anchor and produces an incomplete window with real line provenance. Without an anchor, the file is omitted; arbitrary leading fragments have negative product value and are forbidden.
+
 ### Deterministic analysis
 
 Runs predictable, testable rules over normalized review inputs and returns structured candidate findings with evidence. It has no dependency on a model provider and must be reproducible for the same inputs and rule version.

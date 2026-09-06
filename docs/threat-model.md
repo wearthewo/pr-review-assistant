@@ -63,6 +63,8 @@ An external provider may be unavailable, slow, return malformed results, retain 
 
 ## Residual risk and review triggers
 
+M7 reduces source-exposure and cost risk by selecting before fetching, using immutable revision SHAs, rejecting unsafe repository paths, suppressing generated/vendor and external-package candidates, and enforcing independent candidate, request, file, line, and byte ceilings. Optional misses produce explicit partial context; authentication, repository identity, rate-limit, and transient failures retain M6/M4 classification. Source is ephemeral and is never logged, persisted, executed, or treated as instructions.
+
 AI analysis can be wrong even after validation, GitHub permissions still carry impact, and software dependencies cannot be made risk-free. The product reduces these risks through bounded authority, high-confidence publication, human review, monitoring, and incident response.
 
 The M2 cache is local to one process. Multiple application instances can each mint a token for the same installation, which is acceptable at current scale but may increase authentication traffic. Redis or distributed locking is not justified without measured multi-instance contention. The private key remains readable by the backend process; a future deployment may replace file-based signing with a sign-only key-management service through a separately reviewed design.

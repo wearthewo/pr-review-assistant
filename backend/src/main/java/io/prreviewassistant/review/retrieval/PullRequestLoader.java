@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 public final class PullRequestLoader {
 
     static final int FILES_PER_PAGE = 100;
-    static final int MAX_METADATA_RESPONSE_BYTES = 512 * 1024;
+    public static final int MAX_METADATA_RESPONSE_BYTES = 512 * 1024;
 
     private final GitHubApiClient gitHubApiClient;
     private final PullRequestFetchProperties properties;

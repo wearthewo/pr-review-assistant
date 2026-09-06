@@ -61,6 +61,8 @@ On Windows, use `.\mvnw.cmd clean verify`. The test suite starts a pinned Postgr
 
 ## Configuration principles
 
+Repository context is controlled by `REVIEW_CONTEXT_ENABLED`, `REVIEW_CONTEXT_MAX_FILES`, `REVIEW_CONTEXT_MAX_FILE_BYTES`, `REVIEW_CONTEXT_MAX_TOTAL_BYTES`, `REVIEW_CONTEXT_MAX_CHANGED_FILE_BYTES`, `REVIEW_CONTEXT_MAX_LINES_PER_FILE`, `REVIEW_CONTEXT_MAX_CANDIDATES`, and `REVIEW_CONTEXT_MAX_API_REQUESTS`. These are source-byte and request limits, not model-token limits. M8/M9 own later token accounting.
+
 Common configuration is in `backend/src/main/resources/application.yml`. The local profile in `application-local.yml` imports the ignored root `.env` file. Non-local environments inject `DB_JDBC_URL`, `DB_USERNAME`, and `DB_PASSWORD` directly. Required values have no application defaults, so missing database configuration fails startup instead of selecting an embedded database. Secrets must never be committed, logged, exposed to the frontend, or passed to AI models.
 
 GitHub App authentication additionally requires `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY_PATH`. `GITHUB_API_BASE_URL` defaults to GitHub's public API and is overridable for tests or compatible enterprise deployments. Installation ID is not global configuration; each internal operation supplies it because one App serves many installations.

@@ -8,6 +8,7 @@ import io.prreviewassistant.github.auth.InstallationAccessToken;
 import io.prreviewassistant.github.auth.InstallationTokenProvider;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.client.RestClient;
+import java.util.Base64;
 
 public final class GitHubApiClient {
 
@@ -90,6 +91,21 @@ public final class GitHubApiClient {
                         .build())
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value()), false, maxResponseBytes);
         return new GitHubChangedFilePage(parseFiles(response.body()), response.hasNextPage());
+    }
+
+    public GitHubRepositoryFile getRepositoryFile(long installationId, String owner, String repository,
+            String path, String refSha, int maxResponseBytes) {
+        validateRepositoryAddress(owner, repository);
+        if (!isSafeRepositoryPath(path) || refSha == null || !refSha.matches("[0-9a-fA-F]{40,64}")) {
+            throw GitHubException.malformedResponse();
+        }
+        InstallationAccessToken token = tokenProvider.tokenFor(installationId);
+        GitHubHttpResponse response = GitHubHttpResponses.read(restClient.get()
+                .uri(uriBuilder -> uriBuilder.pathSegment("repos", owner, repository, "contents")
+                        .pathSegment(path.split("/"))
+                        .queryParam("ref", refSha).build())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value()), false, maxResponseBytes);
+        return parseRepositoryFile(response.body());
     }
 
     private AccessibleRepositories parse(String responseBody) {
@@ -229,6 +245,35 @@ public final class GitHubApiClient {
                 || containsPathSeparator(owner) || containsPathSeparator(repository)) {
             throw GitHubException.malformedResponse();
         }
+    }
+
+    private GitHubRepositoryFile parseRepositoryFile(String responseBody) {
+        return parseSafely(responseBody, response -> {
+            JsonNode type = response.path("type");
+            JsonNode encoding = response.path("encoding");
+            JsonNode size = response.path("size");
+            JsonNode content = response.path("content");
+            if (!type.isString() || !"file".equals(type.stringValue())
+                    || !encoding.isString() || !"base64".equals(encoding.stringValue())
+                    || !size.isIntegralNumber() || !size.canConvertToLong() || size.longValue() < 0
+                    || !content.isString()) throw GitHubException.malformedResponse();
+            try {
+                byte[] decoded = Base64.getDecoder().decode(content.stringValue().replaceAll("\\s", ""));
+                if (decoded.length != size.longValue()) throw GitHubException.malformedResponse();
+                return new GitHubRepositoryFile(decoded, size.longValue());
+            } catch (IllegalArgumentException exception) {
+                throw GitHubException.malformedResponse();
+            }
+        });
+    }
+
+    private boolean isSafeRepositoryPath(String path) {
+        if (path == null || path.isBlank() || path.length() > 4096 || path.startsWith("/")
+                || path.indexOf('\\') >= 0 || path.indexOf('\0') >= 0) return false;
+        for (String segment : path.split("/", -1)) {
+            if (segment.isBlank() || segment.equals(".") || segment.equals("..")) return false;
+        }
+        return true;
     }
 
     private boolean containsPathSeparator(String value) {

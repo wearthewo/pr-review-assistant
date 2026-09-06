@@ -81,6 +81,12 @@ This document defines required controls. Concrete libraries, schemas, thresholds
 - Patches, paths, and GitHub error bodies are untrusted source data. They are absent from application logs, exception messages, persisted error codes, and string representations; patch text cannot issue instructions or gain capabilities.
 - Only bounded classifications cross into job state. Rate limits and transient transport/5xx failures retry; stale, inaccessible, malformed, and excessive inputs terminate. Successful retrieval is not reported as a completed review while analysis is absent.
 
+### Repository context controls implemented in M7
+
+Every source byte, import, filename, comment, and URL remains hostile data. Context retrieval uses validated repository-relative identifiers and immutable SHAs; it performs no filesystem access, code execution, URL following, cloning, or environment access. Contents and paths are excluded from logs, exceptions, job codes, `toString()`, Actuator, and metric labels. Binary/NUL and invalid UTF-8 content is not retained. Independent request, candidate, file, line, and byte ceilings limit cost and exhaustion.
+
+Large source is never represented by an arbitrary leading fragment. Only a uniquely located controlled declaration can anchor an incomplete window with accurate line bounds; ambiguous or absent anchors produce `NO_RELEVANT_FRAGMENT`.
+
 ## Untrusted repository and model content
 
 - Treat diffs, source files, paths, comments, commit messages, metadata, generated files, encodings, and archives as malicious input.

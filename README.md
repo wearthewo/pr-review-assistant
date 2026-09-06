@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. Milestone M6 securely retrieves and bounds the exact pull request revision and changed-file data for durable review jobs; analysis and review publishing are not implemented.
+> Project status: **pre-alpha**. Milestone M7 builds bounded, revision-safe repository context with deterministic heuristics; analysis and review publishing are not implemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -86,4 +86,4 @@ After startup, `GET http://localhost:8080/actuator/health` is the operational en
 
 ## Current milestone
 
-M6 resolves the target repository through authenticated numeric-ID metadata, fetches the PR, verifies its number, repository ID, and exact expected head revision, then retrieves every changed-file page through derived same-client requests. A changed head returns `STALE` before file retrieval. Snapshots are immutable and in-memory; paths, counts, pages, response bodies, file count, and patch bytes are bounded, while missing/binary patches remain explicitly unavailable. Rate limits and transient failures retry through M4; stale, inaccessible, malformed, and oversized work terminates with safe codes. The worker remains disabled by default, and even a successful fetch terminates as analysis-not-implemented rather than claiming a completed review. Arbitrary repository context, analysis, AI, snapshot persistence, and publishing remain deferred.
+M7 uses M6's exact-revision snapshot to discover a small set of patch-evidenced local dependencies and missing changed-file context, ranks candidates deterministically, and retrieves them through GitHub's Contents API at the immutable head or base SHA. Large files are retained only around a uniquely located declaration anchor; arbitrary leading fragments are explicitly omitted. Context remains immutable and ephemeral. More context is not automatically better context, and relevant omission is preferable to irrelevant inclusion. M7 uses deterministic heuristics and does not invoke AI. Analysis, findings, persistence, cloning, arbitrary repository traversal, and publishing remain deferred.
