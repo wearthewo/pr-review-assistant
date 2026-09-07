@@ -2,7 +2,7 @@
 
 ## Current state
 
-The repository is at Milestone M6. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL, Flyway, JPA validation, Actuator, Testcontainers, GitHub App authentication, secure webhook/job ingestion, a leased worker, and bounded exact-revision PR/changed-file retrieval. Local infrastructure contains PostgreSQL only. There is no surrounding repository context, review analysis/publication, tenant schema, frontend, OpenAPI specification, AI integration, or CI/CD workflow.
+The repository is at Milestone M8. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL, Flyway, JPA validation, Actuator, Testcontainers, GitHub App authentication, secure webhook/job ingestion, a leased worker, bounded exact-revision context, and a provider-neutral structured AI transport. Local infrastructure contains PostgreSQL only. There is no review analysis/publication, tenant schema, frontend, OpenAPI specification, or CI/CD workflow.
 
 ## Prerequisites
 
@@ -106,7 +106,13 @@ The endpoint returns `202` for both new and duplicate valid deliveries, `400` fo
 
 The production job-creation operation accepts only a validated `ReviewTarget`. M6 supplies its installation ID to the existing M2 token provider, resolves GitHub's mutable owner/name from `GET /repositories/{id}`, verifies that numeric identity, fetches the PR, and compares the returned head SHA before requesting files. `Link` only signals another page; the client increments its own bounded page number on the configured base URL, and redirects are disabled.
 
-Keep `REVIEW_WORKER_ENABLED=false` until review analysis exists. If enabled, M6 retrieval runs outside the claim transaction. Rate limits and network/5xx failures return bounded retryable codes; stale revisions, inaccessible resources, malformed responses, and large PRs terminate. A successfully loaded snapshot also terminates with `REVIEW_ANALYSIS_NOT_IMPLEMENTED` rather than falsely setting `COMPLETED`. The snapshot and patches are never persisted.
+Keep `REVIEW_WORKER_ENABLED=false` until review analysis exists. If enabled, retrieval runs outside the claim transaction. Rate limits and network/5xx failures return bounded retryable codes; stale revisions, inaccessible resources, malformed responses, and large PRs terminate. A successfully built context terminates with `REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED` rather than falsely setting `COMPLETED`. Context and patches are never persisted, and M8 is not called by the worker.
+
+## AI provider configuration
+
+AI transport is off unless `REVIEW_AI_ENABLED=true`. Disabled startup does not require `OPENAI_API_KEY`; enabled OpenAI startup does. Keep the key in runtime secret configuration and never pass it as a command-line argument, print it, or commit it. `AI_PROVIDER`, `OPENAI_MODEL`, and `OPENAI_REASONING_EFFORT` are operator-controlled, not repository- or customer-controlled.
+
+Defaults bound requests to 120,000 instruction-plus-input characters, a 64 KiB schema, 2,048 output tokens, and 60 seconds. Hard ceilings are 500,000 characters, 256 KiB of schema, 8,192 output tokens, and two minutes. `OPENAI_MAX_RETRIES` accepts only zero or one; with the SDK's initial attempt, the maximum billable attempts are one or two. The adapter uses Responses API strict JSON Schema output, `store=false`, and no tools. Normal tests use the deterministic `FakeAiProvider` and never need network access or credentials.
 
 ## Troubleshooting and completion
 

@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. Milestone M7 builds bounded, revision-safe repository context with deterministic heuristics; analysis and review publishing are not implemented.
+> Project status: **pre-alpha**. Milestone M8 provides a bounded, provider-neutral structured AI transport; review analysis and publishing are not implemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -33,7 +33,7 @@ The API and worker are logical components of the backend. PostgreSQL is the init
 - OpenAPI
 - OpenAI behind an internal provider abstraction
 
-The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App client, signed webhook ingestion, revision-specific jobs, and bounded pull request metadata/changed-file retrieval. The frontend and review analysis/publication pipeline remain uninitialized.
+The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App client, signed webhook ingestion, revision-specific jobs, bounded context retrieval, and an OpenAI Responses API adapter behind an internal structured-generation boundary. The frontend and review analysis/publication pipeline remain uninitialized.
 
 ## Repository layout
 
@@ -86,4 +86,4 @@ After startup, `GET http://localhost:8080/actuator/health` is the operational en
 
 ## Current milestone
 
-M7 uses M6's exact-revision snapshot to discover a small set of patch-evidenced local dependencies and missing changed-file context, ranks candidates deterministically, and retrieves them through GitHub's Contents API at the immutable head or base SHA. Large files are retained only around a uniquely located declaration anchor; arbitrary leading fragments are explicitly omitted. Context remains immutable and ephemeral. More context is not automatically better context, and relevant omission is preferable to irrelevant inclusion. M7 uses deterministic heuristics and does not invoke AI. Analysis, findings, persistence, cloning, arbitrary repository traversal, and publishing remain deferred.
+M8 adds a provider-independent, structured-generation transport and the first OpenAI adapter using the Responses API with caller-owned strict JSON Schema. AI is disabled by default, source/instructions/output stay ephemeral and redacted, requests and schemas are independently bounded, model output is capped, calls time out, and SDK retries are limited to one. Provider-reported token usage is returned for later cost accounting. M8 does not define review instructions, a finding schema, validation/ranking, or any worker AI call; those remain deferred.

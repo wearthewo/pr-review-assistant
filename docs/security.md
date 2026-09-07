@@ -83,9 +83,19 @@ This document defines required controls. Concrete libraries, schemas, thresholds
 
 ### Repository context controls implemented in M7
 
+M7 bounds source selection, preserves immutable revision provenance, rejects unsafe paths and binary/invalid text, and keeps source ephemeral. More context is not automatically safer or better.
+
 Every source byte, import, filename, comment, and URL remains hostile data. Context retrieval uses validated repository-relative identifiers and immutable SHAs; it performs no filesystem access, code execution, URL following, cloning, or environment access. Contents and paths are excluded from logs, exceptions, job codes, `toString()`, Actuator, and metric labels. Binary/NUL and invalid UTF-8 content is not retained. Independent request, candidate, file, line, and byte ceilings limit cost and exhaustion.
 
 Large source is never represented by an arbitrary leading fragment. Only a uniquely located controlled declaration can anchor an incomplete window with accurate line bounds; ambiguous or absent anchors produce `NO_RELEVANT_FRAGMENT`.
+
+### AI transport controls implemented in M8
+
+- AI is disabled by default. Enabling OpenAI requires a runtime API key; the key is redacted by configuration objects and never logged, persisted, exposed through Actuator, or copied into errors.
+- Instructions and untrusted repository input remain separate request fields. The adapter enables no functions, tools, search, computer use, URL following, or code execution.
+- Calls require caller-owned JSON Schema Structured Outputs, set provider storage off, and reject missing, refusal, incomplete, scalar, or malformed structured output as a controlled terminal failure.
+- Input characters, schema bytes, output tokens, request duration, and retries are bounded independently. At most one SDK retry is allowed, preventing stacked application retries from multiplying provider cost.
+- Only provider/model/request identifiers, duration, attempt ceiling, and provider-reported numeric usage are safe operational metadata. Instructions, source, schema content, output, and raw provider responses remain ephemeral and redacted.
 
 ## Untrusted repository and model content
 

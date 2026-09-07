@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, a durable worker, and bounded exact-revision pull request retrieval. It contains no review analysis, publishing, tenant persistence, arbitrary repository-context retrieval, or AI integration.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, a durable worker, bounded exact-revision context retrieval, and a disabled-by-default structured AI provider boundary. It contains no review analysis, publishing, tenant persistence, or arbitrary repository traversal.
 
 ## Requirements
 
@@ -77,6 +77,14 @@ Source uses `GET /repos/{owner}/{repo}/contents/{path}?ref={immutable_sha}` with
 
 Defaults are 12 retained files, 128 KiB per file, 512 KiB total, 200 retained lines, 100 candidates, and 20 GitHub requests. `REVIEW_CONTEXT_*` variables configure bounded ceilings. These are source-byte limits, not model-token limits. More context is not automatically better context. M7 uses deterministic heuristics and does not invoke AI.
 
+## AI provider transport
+
+M8's `AiProvider` accepts separate application instructions, untrusted input data, a caller-owned JSON Schema, and a controlled generation profile. `OpenAiProvider` is the first adapter and uses the official OpenAI Java SDK 4.58.0 Responses API with strict Structured Outputs, `store=false`, and no tools, functions, web search, file search, computer use, or code execution. AI provider transport does not decide what constitutes a review finding. Model capability is not a substitute for deterministic context selection and finding validation.
+
+AI is disabled by default. To enable the adapter, set `REVIEW_AI_ENABLED=true` and supply `OPENAI_API_KEY` through the runtime secret store. Operator-controlled defaults are `AI_PROVIDER=openai`, `OPENAI_MODEL=gpt-5.6-terra`, `OPENAI_REASONING_EFFORT=low`, `OPENAI_MAX_OUTPUT_TOKENS=2048`, `OPENAI_TIMEOUT=60s`, and `OPENAI_MAX_RETRIES=1`. `AI_MAX_INPUT_CHARS` and `AI_MAX_SCHEMA_BYTES` bound transport at 120,000 characters and 64 KiB by default. Configuration rejects more than 8,192 output tokens, a timeout over two minutes, or more than one SDK retry; the maximum is therefore two provider attempts per logical call.
+
+The API key, instructions, untrusted input, schema body, structured output, and raw provider response are never logged or persisted. Responses expose only structured JSON to the caller plus safe provider/model/request metadata, duration, and provider-reported token counts (including cached input and reasoning counts when available). Provider and model are cost-accounting dimensions; prices and billing are intentionally absent. The worker still terminates at `REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED`, so enabling M8 alone makes no paid review call.
+
 ## GitHub webhook ingestion
 
 `POST /api/webhooks/github` accepts only `application/json` and requires `X-Hub-Signature-256`, `X-GitHub-Delivery`, and `X-GitHub-Event`. Configure the same random, high-entropy secret in the GitHub App and `GITHUB_WEBHOOK_SECRET`; the App private key and webhook secret are independent credentials. `GITHUB_WEBHOOK_MAX_BODY_SIZE` defaults to `1MB` and may not exceed GitHub's 25 MiB payload cap.
@@ -93,4 +101,4 @@ M4 stores review work in PostgreSQL with `READY`, `PROCESSING`, `COMPLETED`, and
 
 Expired `PROCESSING` leases are reclaimed by a later poll when attempts remain. An expired final attempt becomes `FAILED`. Retryable failures return to `READY` with deterministic `baseDelay * 2^(attempt-1)` backoff capped by the configured maximum; only a bounded safe error code is stored. Terminal failures and exhausted attempts become `FAILED` immediately. No payload, stack trace, external response, credential, or source content is stored in M4 jobs.
 
-The scheduler is disabled by default and invokes a separately testable poll-once worker. Configure it with `REVIEW_WORKER_ENABLED`, `REVIEW_WORKER_POLL_INTERVAL`, `REVIEW_WORKER_BATCH_SIZE`, `REVIEW_WORKER_LEASE_DURATION`, `REVIEW_JOB_MAX_ATTEMPTS`, `REVIEW_JOB_RETRY_BASE_DELAY`, and `REVIEW_JOB_RETRY_MAX_DELAY`. Rate-limit and transient GitHub failures retry; stale revisions, inaccessible resources, malformed responses, and excessive PRs terminate with bounded codes. Successful retrieval ends as `REVIEW_ANALYSIS_NOT_IMPLEMENTED`, never `COMPLETED`. Redis/Kafka, analysis, surrounding-file context, snapshot persistence, and review publication remain deferred.
+The scheduler is disabled by default and invokes a separately testable poll-once worker. Configure it with `REVIEW_WORKER_ENABLED`, `REVIEW_WORKER_POLL_INTERVAL`, `REVIEW_WORKER_BATCH_SIZE`, `REVIEW_WORKER_LEASE_DURATION`, `REVIEW_JOB_MAX_ATTEMPTS`, `REVIEW_JOB_RETRY_BASE_DELAY`, and `REVIEW_JOB_RETRY_MAX_DELAY`. Rate-limit and transient GitHub failures retry; stale revisions, inaccessible resources, malformed responses, and excessive PRs terminate with bounded codes. Successful context construction ends as `REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED`, never `COMPLETED`. Redis/Kafka, review analysis, snapshot persistence, and review publication remain deferred.

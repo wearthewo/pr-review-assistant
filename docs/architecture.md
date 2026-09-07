@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M6, the Spring Boot/PostgreSQL foundation, GitHub App authentication, durable webhook/job lifecycle, and bounded exact-revision PR/changed-file retrieval exist; repository-context discovery, analysis, and publication remain unimplemented.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M8, the Spring Boot/PostgreSQL foundation, GitHub App authentication, durable webhook/job lifecycle, bounded exact-revision context, and a structured AI transport exist; review analysis and publication remain unimplemented.
 
 ## System context
 
@@ -56,7 +56,7 @@ Runs predictable, testable rules over normalized review inputs and returns struc
 
 ### AI analysis boundary
 
-Accepts a bounded, policy-approved analysis request and returns provider-neutral structured candidates. An internal provider interface isolates credentials, request formats, response formats, failure behavior, and future provider substitution. Model output is untrusted and cannot publish directly.
+M8 accepts separate application instructions and untrusted input, a caller-owned strict JSON Schema, and a controlled generation profile, then returns structured JSON plus provider-neutral usage and execution metadata. The OpenAI adapter uses the Responses API, stores no provider payloads, enables no tools, and contains every SDK type. This transport does not define findings or review policy. Model output remains untrusted and cannot publish directly.
 
 ### Validation and ranking
 
@@ -90,7 +90,7 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, and a disabled-by-default job poller. Database locks and claim tokens make ownership safe across processes. PostgreSQL stores webhook envelopes and immutable targets, but no credentials, fetched PR snapshots, patches, or findings. M6 snapshots exist only during retrieval. The frontend and deployment topology remain undecided.
+The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, a disabled-by-default job poller, and a disabled-by-default AI adapter. Database locks and claim tokens make ownership safe across processes. PostgreSQL stores webhook envelopes and immutable targets, but no credentials, fetched context, AI requests, AI outputs, or findings. Context and AI transport data remain ephemeral. The frontend and deployment topology remain undecided.
 
 ## Decision records
 

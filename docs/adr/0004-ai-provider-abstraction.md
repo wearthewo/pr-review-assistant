@@ -9,7 +9,7 @@ The review pipeline will initially use OpenAI, but model APIs expose provider-sp
 
 ## Decision
 
-Define an internal, provider-neutral AI analysis contract owned by the application. The contract accepts bounded review context and policy-relevant options and returns structured candidate findings plus provider-neutral usage and failure information. OpenAI is implemented as an outbound adapter. Domain logic, validation, ranking, and publication do not depend on OpenAI SDK types or provider-specific semantics.
+Define an internal, provider-neutral structured-generation transport owned by the application. The contract accepts separate instructions and untrusted input, a caller-owned strict JSON Schema, and a controlled generation profile; it returns structured JSON plus provider-neutral usage, execution metadata, and failure information. OpenAI is the first outbound adapter and uses the Responses API through the framework-neutral official Java SDK. SDK types remain inside the adapter, no Spring AI starter is used, and no provider tools are enabled. Domain review policy, the eventual findings schema, validation, ranking, and publication do not depend on OpenAI SDK types or provider-specific semantics.
 
 The abstraction is intentionally narrow: it supports the demonstrated review-analysis use case, not a generalized multi-provider framework. It does not imply simultaneous provider routing, automatic failover, or feature parity across vendors.
 
@@ -33,6 +33,8 @@ The abstraction is intentionally narrow: it supports the demonstrated review-ana
 - Call the OpenAI SDK directly from domain/application logic: less initial code, but creates pervasive coupling, weaker testability, and inconsistent security/failure handling.
 - Adopt a broad third-party AI orchestration framework: adds dependencies and abstractions before requirements justify them and may leak its model into the domain.
 - Build multi-provider routing immediately: speculative complexity without an availability, cost, or compliance requirement.
+- Call OpenAI with a raw REST client: would duplicate maintained SDK serialization, error, timeout, and retry behavior without a demonstrated benefit.
+- Use Chat Completions or unrestricted prose: weaker fit for new structured generation and would force downstream prose parsing.
 
 ## Revisit when
 

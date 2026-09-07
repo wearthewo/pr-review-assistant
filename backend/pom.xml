@@ -26,6 +26,7 @@
         <testcontainers.version>2.0.5</testcontainers.version>
         <nimbus-jose-jwt.version>10.9.1</nimbus-jose-jwt.version>
         <bouncycastle.version>1.85</bouncycastle.version>
+        <openai-java.version>4.58.0</openai-java.version>
     </properties>
 
     <dependencyManagement>
@@ -79,6 +80,11 @@
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcpkix-jdk18on</artifactId>
             <version>${bouncycastle.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.openai</groupId>
+            <artifactId>openai-java</artifactId>
+            <version>${openai-java.version}</version>
         </dependency>
 
         <dependency>

@@ -2,7 +2,7 @@
 
 ## Scope
 
-This threat model covers the planned path from GitHub webhooks through durable processing, context retrieval, analysis, and GitHub review publication, plus the future administrative frontend and software supply chain. M6 adds authenticated, exact-revision PR metadata and changed-file retrieval with bounded in-memory snapshots. Tenant persistence, broader repository context, analysis, and publication remain future scope.
+This threat model covers the planned path from GitHub webhooks through durable processing, context retrieval, analysis, and GitHub review publication, plus the future administrative frontend and software supply chain. M8 adds a disabled-by-default, bounded structured-generation boundary and OpenAI adapter. Tenant persistence, actual review analysis, and publication remain future scope.
 
 ## Assets
 
@@ -64,6 +64,8 @@ An external provider may be unavailable, slow, return malformed results, retain 
 ## Residual risk and review triggers
 
 M7 reduces source-exposure and cost risk by selecting before fetching, using immutable revision SHAs, rejecting unsafe repository paths, suppressing generated/vendor and external-package candidates, and enforcing independent candidate, request, file, line, and byte ceilings. Optional misses produce explicit partial context; authentication, repository identity, rate-limit, and transient failures retain M6/M4 classification. Source is ephemeral and is never logged, persisted, executed, or treated as instructions.
+
+M8 keeps application instructions structurally separate from hostile repository input, enables no model tools or URL access, and requests only caller-schema structured JSON. Independent input, schema, output-token, timeout, and retry ceilings limit cost and availability impact. The API key and content never enter string representations, logs, persistence, Actuator, or safe error codes. Provider output, refusal, incomplete results, and malformed JSON are not authority or successful review results. The remaining risk is that source will cross the configured provider boundary once M9 invokes it; tenant policy, minimization, validation, and privacy disclosure must be completed before production review enablement.
 
 AI analysis can be wrong even after validation, GitHub permissions still carry impact, and software dependencies cannot be made risk-free. The product reduces these risks through bounded authority, high-confidence publication, human review, monitoring, and incident response.
 
