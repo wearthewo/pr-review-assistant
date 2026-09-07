@@ -97,6 +97,15 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 - Input characters, schema bytes, output tokens, request duration, and retries are bounded independently. At most one SDK retry is allowed, preventing stacked application retries from multiplying provider cost.
 - Only provider/model/request identifiers, duration, attempt ceiling, and provider-reported numeric usage are safe operational metadata. Instructions, source, schema content, output, and raw provider responses remain ephemeral and redacted.
 
+### Review-engine controls implemented in M9
+
+- Application-owned review instructions remain separate from deterministic JSON marked as untrusted repository data. Source text cannot alter policy or gain tools, network, filesystem, database, GitHub, or secret access.
+- The engine requests at most five findings by default (hard ceiling ten), one provider call per logical attempt, the configured balanced model tier, economical reasoning, and the existing output-token ceiling. Empty findings are successful.
+- Strict JSON Schema is followed by domain validation. Unknown fields, invalid enums/ranges, oversized strings, and output flooding fail safely. Low-confidence, duplicate, unknown-path, auxiliary-only, previous-rename-path, and unsupported-line candidates are excluded.
+- New-side coordinates come only from a bounded linear unified-diff mapping or explicit M7 HEAD changed-file context. Malformed hunks lose precision; removed files cannot claim HEAD line locations; no replacement location is invented.
+- Findings, source, prompts, schema bodies, and provider output remain in memory only and are absent from logs, errors, queue state, Actuator, and string representations. Safe metadata contains only provider/model, duration, attempt ceiling, numeric token usage, and finding count.
+- Retryable provider failures map to bounded retry codes; authentication, permission, unavailable-model, malformed-output, and other terminal failures map to bounded terminal codes. Successful analysis stops before publication and cannot mark a review completed.
+
 ## Untrusted repository and model content
 
 - Treat diffs, source files, paths, comments, commit messages, metadata, generated files, encodings, and archives as malicious input.

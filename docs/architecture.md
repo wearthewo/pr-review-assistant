@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M8, the Spring Boot/PostgreSQL foundation, GitHub App authentication, durable webhook/job lifecycle, bounded exact-revision context, and a structured AI transport exist; review analysis and publication remain unimplemented.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M9, the Spring Boot/PostgreSQL foundation, GitHub App authentication, durable webhook/job lifecycle, bounded exact-revision context, structured AI transport, and candidate review analysis exist; final suppression and publication remain unimplemented.
 
 ## System context
 
@@ -38,7 +38,7 @@ Stores durable product state and review jobs. For a new reviewable delivery, its
 
 ### Review worker
 
-Claims durable jobs in deterministic due/creation/ID order, commits the claim, then executes work outside a database transaction. Completion, retry, and failure use separate short ownership-checked transactions. The scheduler remains disabled by default. M6 retrieves target-bearing work and translates only safe classifications to queue transitions; successful retrieval terminates as analysis-not-implemented rather than falsely completing a review. Later external effects must remain retry-safe; exactly-once execution is not promised.
+Claims durable jobs in deterministic due/creation/ID order, commits the claim, then executes work outside a database transaction. Completion, retry, and failure use separate short ownership-checked transactions. The scheduler remains disabled by default. M9 invokes analysis only for a ready/partial exact-revision context when AI is enabled. Retryable provider classes retain M4 retry behavior; terminal classes use bounded codes. Successful analysis stops at publishing-not-implemented rather than falsely completing a review. Later external effects must remain retry-safe; exactly-once execution is not promised.
 
 ### GitHub integration
 
@@ -56,7 +56,9 @@ Runs predictable, testable rules over normalized review inputs and returns struc
 
 ### AI analysis boundary
 
-M8 accepts separate application instructions and untrusted input, a caller-owned strict JSON Schema, and a controlled generation profile, then returns structured JSON plus provider-neutral usage and execution metadata. The OpenAI adapter uses the Responses API, stores no provider payloads, enables no tools, and contains every SDK type. This transport does not define findings or review policy. Model output remains untrusted and cannot publish directly.
+M8 accepts separate application instructions and untrusted input, a caller-owned strict JSON Schema, and a controlled generation profile, then returns structured JSON plus provider-neutral usage and execution metadata. The OpenAI adapter uses the Responses API, stores no provider payloads, enables no tools, and contains every SDK type.
+
+M9 owns review policy above that generic transport. It deterministically serializes the exact bounded context with explicit untrusted-data marking, maps unified diffs to real new-side coordinates, makes one balanced/economical-reasoning generation call, and converts strict structured output into immutable candidate findings. It accepts empty reviews, excludes unknown paths and unsupported locations, bounds all fields/counts, and propagates safe usage metadata. Model output remains untrusted and cannot publish directly.
 
 ### Validation and ranking
 
@@ -90,7 +92,7 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, a disabled-by-default job poller, and a disabled-by-default AI adapter. Database locks and claim tokens make ownership safe across processes. PostgreSQL stores webhook envelopes and immutable targets, but no credentials, fetched context, AI requests, AI outputs, or findings. Context and AI transport data remain ephemeral. The frontend and deployment topology remain undecided.
+The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, a disabled-by-default job poller, and a disabled-by-default AI adapter/review engine. Database locks and claim tokens make ownership safe across processes. PostgreSQL stores webhook envelopes and immutable targets, but no credentials, fetched context, AI requests, AI outputs, analyses, or findings. Context and review data remain ephemeral. The frontend and deployment topology remain undecided.
 
 ## Decision records
 

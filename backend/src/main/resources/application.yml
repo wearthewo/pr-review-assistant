@@ -38,6 +38,9 @@ github:
     max-body-size: ${GITHUB_WEBHOOK_MAX_BODY_SIZE:1MB}
 
 review:
+  analysis:
+    max-findings: ${REVIEW_AI_MAX_FINDINGS:5}
+    minimum-candidate-confidence: ${REVIEW_AI_MINIMUM_CANDIDATE_CONFIDENCE:70}
   ai:
     enabled: ${REVIEW_AI_ENABLED:false}
     provider: ${AI_PROVIDER:openai}

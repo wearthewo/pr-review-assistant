@@ -2,7 +2,7 @@
 
 ## Current state
 
-The repository is at Milestone M8. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL, Flyway, JPA validation, Actuator, Testcontainers, GitHub App authentication, secure webhook/job ingestion, a leased worker, bounded exact-revision context, and a provider-neutral structured AI transport. Local infrastructure contains PostgreSQL only. There is no review analysis/publication, tenant schema, frontend, OpenAPI specification, or CI/CD workflow.
+The repository is at Milestone M9. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL, Flyway, JPA validation, Actuator, Testcontainers, GitHub App authentication, secure webhook/job ingestion, a leased worker, bounded exact-revision context, provider-neutral structured AI transport, and candidate review analysis. Local infrastructure contains PostgreSQL only. There is no final finding suppression/ranking, review publication, tenant schema, frontend, OpenAPI specification, or CI/CD workflow.
 
 ## Prerequisites
 
@@ -61,7 +61,7 @@ On Windows, use `.\mvnw.cmd clean verify`. The test suite starts a pinned Postgr
 
 ## Configuration principles
 
-Repository context is controlled by `REVIEW_CONTEXT_ENABLED`, `REVIEW_CONTEXT_MAX_FILES`, `REVIEW_CONTEXT_MAX_FILE_BYTES`, `REVIEW_CONTEXT_MAX_TOTAL_BYTES`, `REVIEW_CONTEXT_MAX_CHANGED_FILE_BYTES`, `REVIEW_CONTEXT_MAX_LINES_PER_FILE`, `REVIEW_CONTEXT_MAX_CANDIDATES`, and `REVIEW_CONTEXT_MAX_API_REQUESTS`. These are source-byte and request limits, not model-token limits. M8/M9 own later token accounting.
+Repository context is controlled by `REVIEW_CONTEXT_ENABLED`, `REVIEW_CONTEXT_MAX_FILES`, `REVIEW_CONTEXT_MAX_FILE_BYTES`, `REVIEW_CONTEXT_MAX_TOTAL_BYTES`, `REVIEW_CONTEXT_MAX_CHANGED_FILE_BYTES`, `REVIEW_CONTEXT_MAX_LINES_PER_FILE`, `REVIEW_CONTEXT_MAX_CANDIDATES`, and `REVIEW_CONTEXT_MAX_API_REQUESTS`. These are source-byte and request limits, not model-token limits. M8 records provider-reported token usage and M9 propagates it without calculating prices.
 
 Common configuration is in `backend/src/main/resources/application.yml`. The local profile in `application-local.yml` imports the ignored root `.env` file. Non-local environments inject `DB_JDBC_URL`, `DB_USERNAME`, and `DB_PASSWORD` directly. Required values have no application defaults, so missing database configuration fails startup instead of selecting an embedded database. Secrets must never be committed, logged, exposed to the frontend, or passed to AI models.
 
@@ -100,19 +100,27 @@ Flyway is enabled and is the sole schema migration mechanism. V1 creates `github
 
 Job creation persists `READY` with attempt zero, an explicit maximum, and `next_attempt_at` equal to the injected clock. A claim transaction first terminalizes expired final attempts, then selects due `READY` and reclaimable `PROCESSING` rows using `FOR UPDATE SKIP LOCKED`, ordered by `next_attempt_at`, `created_at`, and UUID. It increments attempts and assigns a UUID claim token plus lease before commit. The handler executes after claim commit. Completion, retry, and failure each use a separate conditional transaction requiring job ID, `PROCESSING`, and the current token. Retry clears ownership and schedules `base * 2^(attempt-1)` up to the cap. This is at-least-once execution; future external effects must be independently idempotent.
 
-Only validated uppercase safe error codes up to 64 characters are stored. Do not persist or log exception messages, stack traces, payloads, source content, provider response bodies, or credentials. Redis/Kafka, distributed scheduler coordination, priorities, tenant mapping, snapshot persistence, surrounding-file retrieval, analysis, and cleanup/retention remain deferred.
+Only validated uppercase safe error codes up to 64 characters are stored. Do not persist or log exception messages, stack traces, payloads, source content, provider response bodies, or credentials. Redis/Kafka, distributed scheduler coordination, priorities, tenant mapping, snapshot/analysis persistence, final finding policy, publication, and cleanup/retention remain deferred.
 
 The endpoint returns `202` for both new and duplicate valid deliveries, `400` for malformed metadata or JSON, `401` for any missing, malformed, or invalid signature, `413` for an oversized body, `415` for unsupported media types, and `5xx` when durable storage fails. Error bodies are empty. After M3 verification, M5 handles only `pull_request` actions `opened`, `reopened`, and `synchronize`. Other events/actions and signed but incomplete relevant payloads commit the webhook without a job and still return `202`. For reviewable payloads, webhook and job insertions share one transaction; job insertion failure rolls both back. Distinct deliveries for one revision remain distinct webhook rows but use one job through PostgreSQL `ON CONFLICT DO NOTHING`.
 
 The production job-creation operation accepts only a validated `ReviewTarget`. M6 supplies its installation ID to the existing M2 token provider, resolves GitHub's mutable owner/name from `GET /repositories/{id}`, verifies that numeric identity, fetches the PR, and compares the returned head SHA before requesting files. `Link` only signals another page; the client increments its own bounded page number on the configured base URL, and redirects are disabled.
 
-Keep `REVIEW_WORKER_ENABLED=false` until review analysis exists. If enabled, retrieval runs outside the claim transaction. Rate limits and network/5xx failures return bounded retryable codes; stale revisions, inaccessible resources, malformed responses, and large PRs terminate. A successfully built context terminates with `REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED` rather than falsely setting `COMPLETED`. Context and patches are never persisted, and M8 is not called by the worker.
+Keep `REVIEW_WORKER_ENABLED=false` until tenant policy and publication controls are ready. If enabled, retrieval and analysis run outside the claim transaction. Rate limits, timeouts, and transient GitHub/AI failures return bounded retryable codes; stale revisions, inaccessible resources, malformed responses, large PRs, and terminal provider failures terminate. With AI disabled, context ends at `REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED`. With AI enabled, one M9 call is made and a successful candidate analysis—including zero findings—ends at `REVIEW_PUBLISHING_NOT_IMPLEMENTED`, never `COMPLETED`. Context, patches, prompts, outputs, and findings are never persisted.
 
 ## AI provider configuration
 
 AI transport is off unless `REVIEW_AI_ENABLED=true`. Disabled startup does not require `OPENAI_API_KEY`; enabled OpenAI startup does. Keep the key in runtime secret configuration and never pass it as a command-line argument, print it, or commit it. `AI_PROVIDER`, `OPENAI_MODEL`, and `OPENAI_REASONING_EFFORT` are operator-controlled, not repository- or customer-controlled.
 
 Defaults bound requests to 120,000 instruction-plus-input characters, a 64 KiB schema, 2,048 output tokens, and 60 seconds. Hard ceilings are 500,000 characters, 256 KiB of schema, 8,192 output tokens, and two minutes. `OPENAI_MAX_RETRIES` accepts only zero or one; with the SDK's initial attempt, the maximum billable attempts are one or two. The adapter uses Responses API strict JSON Schema output, `store=false`, and no tools. Normal tests use the deterministic `FakeAiProvider` and never need network access or credentials.
+
+## Review analysis configuration
+
+`REVIEW_AI_MAX_FINDINGS=5` controls the strict candidate array limit and accepts only 1–10. `REVIEW_AI_MINIMUM_CANDIDATE_CONFIDENCE=70` accepts 0–100; candidates below it are omitted before the in-memory analysis result. These are operator controls, not repository/customer prompt controls. The engine uses the M8 balanced profile, configured economical reasoning, and configured output-token ceiling without hard-coding a provider model.
+
+The serializer emits deterministic JSON with a clear untrusted-data marker, compact PR metadata, canonical changed paths, line-numbered unified diff evidence, deduplicated auxiliary fragments, omission reasons, and bounded budget metadata. It performs no additional GitHub call. Strict schema output is revalidated for count, enum, confidence, field size, exact changed path, and real HEAD/new-side location. Invalid semantic candidates are excluded without invented replacement data; unsafe output structure terminates with `AI_INVALID_OUTPUT`.
+
+Automated tests use `FakeAiProvider` and make no paid/network calls. Once publication exists, analysis and publishing should have a recoverable boundary so a publication-only retry does not pay for repeated AI generation. M9 deliberately does not introduce that persistence or job split.
 
 ## Troubleshooting and completion
 

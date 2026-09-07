@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. Milestone M8 provides a bounded, provider-neutral structured AI transport; review analysis and publishing are not implemented.
+> Project status: **pre-alpha**. Milestone M9 produces bounded, evidence-checked AI candidate findings; final suppression and GitHub publishing are not implemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -33,7 +33,7 @@ The API and worker are logical components of the backend. PostgreSQL is the init
 - OpenAPI
 - OpenAI behind an internal provider abstraction
 
-The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App client, signed webhook ingestion, revision-specific jobs, bounded context retrieval, and an OpenAI Responses API adapter behind an internal structured-generation boundary. The frontend and review analysis/publication pipeline remain uninitialized.
+The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App client, signed webhook ingestion, revision-specific jobs, bounded context retrieval, an OpenAI Responses API adapter behind an internal structured-generation boundary, and a provider-neutral candidate review engine. The frontend, final finding suppression, and publication remain uninitialized.
 
 ## Repository layout
 
@@ -86,4 +86,6 @@ After startup, `GET http://localhost:8080/actuator/health` is the operational en
 
 ## Current milestone
 
-M8 adds a provider-independent, structured-generation transport and the first OpenAI adapter using the Responses API with caller-owned strict JSON Schema. AI is disabled by default, source/instructions/output stay ephemeral and redacted, requests and schemas are independently bounded, model output is capped, calls time out, and SDK retries are limited to one. Provider-reported token usage is returned for later cost accounting. M8 does not define review instructions, a finding schema, validation/ranking, or any worker AI call; those remain deferred.
+M9 adds one provider-neutral review analysis call over the exact bounded M7 context. Application-owned instructions prioritize concrete correctness, security, concurrency, transaction, reliability, API-misuse, and significant performance failures; zero findings is a successful and preferred result when evidence is insufficient. Deterministic JSON serialization supplies line-numbered diff and auxiliary evidence, and strict schema plus post-response validation rejects unsupported paths, invented lines, malformed fields, and output flooding.
+
+Findings are candidates only. M10 owns final deterministic suppression, ranking, and deduplication, and M11 owns GitHub publication. Source, prompts, and model output remain ephemeral and unlogged; no provider tools are enabled. A successful analysis currently terminates safely at `REVIEW_PUBLISHING_NOT_IMPLEMENTED` rather than claiming a completed review.

@@ -4,8 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openai.client.OpenAIClient;
 import com.openai.client.okhttp.OpenAIOkHttpClient;
 import io.prreviewassistant.ai.AiProvider;
+import io.prreviewassistant.ai.AiGenerationProfile;
 import io.prreviewassistant.ai.ReviewAiProperties;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,6 +17,12 @@ import java.time.Clock;
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties({ReviewAiProperties.class, OpenAiProperties.class})
 class AiConfiguration {
+    @Bean
+    @ConditionalOnMissingBean(ObjectMapper.class)
+    ObjectMapper structuredAiObjectMapper() {
+        return new ObjectMapper();
+    }
+
     @Bean
     @ConditionalOnProperty(prefix = "review.ai", name = "enabled", havingValue = "true")
     OpenAIClient openAIClient(OpenAiProperties properties) {
@@ -37,5 +45,11 @@ class AiConfiguration {
             throw new IllegalStateException("Configured AI provider is unsupported");
         }
         return new OpenAiProvider(gateway, openAiProperties, aiProperties, objectMapper, clock);
+    }
+
+    @Bean
+    @ConditionalOnProperty(prefix = "review.ai", name = "enabled", havingValue = "true")
+    AiGenerationProfile aiGenerationProfile(OpenAiProperties properties) {
+        return properties.defaultProfile();
     }
 }
