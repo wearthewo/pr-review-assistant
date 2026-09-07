@@ -13,7 +13,12 @@ import io.prreviewassistant.review.retrieval.PullRequestLoadResult;
 import io.prreviewassistant.review.retrieval.PullRequestLoader;
 import io.prreviewassistant.review.retrieval.PullRequestSnapshot;
 import io.prreviewassistant.review.context.*;
+import io.prreviewassistant.ai.AiProviderErrorType;
+import io.prreviewassistant.ai.AiProviderException;
+import io.prreviewassistant.review.analysis.ReviewAnalysisException;
+import io.prreviewassistant.review.analysis.ReviewEngine;
 import org.junit.jupiter.api.Test;
+import static org.mockito.Mockito.verify;
 
 class PullRequestRetrievalJobHandlerTest {
 
@@ -60,6 +65,36 @@ class PullRequestRetrievalJobHandlerTest {
         assertThat(result.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.SUCCESS);
     }
 
+    @Test
+    void enabledAnalysisRunsOnceAndStopsBeforeFalseCompletion() {
+        Fixture fixture = fixtureWithEngine();
+
+        ReviewJobExecutionResult result = fixture.handler().handle(claim(TARGET));
+
+        assertThat(result.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE);
+        assertThat(result.errorCode().value()).isEqualTo("REVIEW_PUBLISHING_NOT_IMPLEMENTED");
+        verify(fixture.engine()).analyze(fixture.context());
+    }
+
+    @Test
+    void retryableProviderFailuresMapToBoundedRetryableCodes() {
+        assertAiFailure(AiProviderErrorType.RATE_LIMITED, ReviewJobExecutionResult.Outcome.RETRYABLE_FAILURE, "AI_RATE_LIMITED");
+        assertAiFailure(AiProviderErrorType.TIMEOUT, ReviewJobExecutionResult.Outcome.RETRYABLE_FAILURE, "AI_TIMEOUT");
+        assertAiFailure(AiProviderErrorType.TRANSIENT, ReviewJobExecutionResult.Outcome.RETRYABLE_FAILURE, "AI_TRANSIENT_FAILURE");
+    }
+
+    @Test
+    void terminalProviderAndAnalysisFailuresMapToBoundedTerminalCodes() {
+        assertAiFailure(AiProviderErrorType.AUTHENTICATION, ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE, "AI_AUTHENTICATION_FAILED");
+        assertAiFailure(AiProviderErrorType.PERMISSION_DENIED, ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE, "AI_PERMISSION_DENIED");
+        assertAiFailure(AiProviderErrorType.MODEL_UNAVAILABLE, ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE, "AI_MODEL_UNAVAILABLE");
+
+        Fixture fixture = fixtureWithEngine();
+        when(fixture.engine().analyze(fixture.context())).thenThrow(new ReviewAnalysisException());
+        ReviewJobExecutionResult result = fixture.handler().handle(claim(TARGET));
+        assertThat(result.errorCode().value()).isEqualTo("AI_INVALID_OUTPUT");
+    }
+
     private void assertOutcome(
             PullRequestLoadResult loadResult,
             ReviewJobExecutionResult.Outcome outcome,
@@ -92,6 +127,31 @@ class PullRequestRetrievalJobHandlerTest {
         assertThat(result.errorCode().value()).isEqualTo(errorCode);
         assertThat(result.errorCode().value()).doesNotContain("patch", "token", "secret");
     }
+
+    private void assertAiFailure(AiProviderErrorType type, ReviewJobExecutionResult.Outcome outcome, String code) {
+        Fixture fixture = fixtureWithEngine();
+        when(fixture.engine().analyze(fixture.context())).thenThrow(new AiProviderException(type));
+
+        ReviewJobExecutionResult result = fixture.handler().handle(claim(TARGET));
+
+        assertThat(result.outcome()).isEqualTo(outcome);
+        assertThat(result.errorCode().value()).isEqualTo(code).doesNotContain("source", "prompt", "token");
+    }
+
+    private Fixture fixtureWithEngine() {
+        PullRequestSnapshot snapshot = new PullRequestSnapshot(
+                1, 2, 3, "a".repeat(40), "b".repeat(40), false, List.of());
+        ReviewContext context = new ReviewContext(TARGET, snapshot, List.of(),
+                new ContextBudgetUsage(0, 0, 0, 0, 0, 0, false));
+        PullRequestLoader loader = mock(PullRequestLoader.class);
+        when(loader.load(TARGET)).thenReturn(PullRequestLoadResult.ready(snapshot));
+        ReviewContextBuilder contextBuilder = mock(ReviewContextBuilder.class);
+        when(contextBuilder.build(snapshot)).thenReturn(ReviewContextBuildResult.ready(context));
+        ReviewEngine engine = mock(ReviewEngine.class);
+        return new Fixture(new PullRequestRetrievalJobHandler(loader, contextBuilder, engine), engine, context);
+    }
+
+    private record Fixture(PullRequestRetrievalJobHandler handler, ReviewEngine engine, ReviewContext context) { }
 
     private ClaimedReviewJob claim(ReviewTarget target) {
         Instant now = Instant.parse("2026-09-06T12:00:00Z");

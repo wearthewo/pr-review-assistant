@@ -39,7 +39,7 @@ public final class ReviewContextBuilder {
         }
         return result(snapshot,files,omissions,budget.usage());
     }
-    private ReviewContextBuildResult result(PullRequestSnapshot s,List<ContextFile> f,List<ContextOmission> o,ContextBudgetUsage u){ReviewContext c=new ReviewContext(new io.prreviewassistant.review.job.ReviewTarget(s.installationId(),s.repositoryId(),s.pullRequestNumber(),s.headSha()),s,f,u);return o.isEmpty()?ReviewContextBuildResult.ready(c):ReviewContextBuildResult.partial(c,o);}
+    private ReviewContextBuildResult result(PullRequestSnapshot s,List<ContextFile> f,List<ContextOmission> o,ContextBudgetUsage u){ReviewContext c=new ReviewContext(new io.prreviewassistant.review.job.ReviewTarget(s.installationId(),s.repositoryId(),s.pullRequestNumber(),s.headSha()),s,f,o,u);return o.isEmpty()?ReviewContextBuildResult.ready(c):ReviewContextBuildResult.partial(c,o);}
     private String decode(byte[] b){if(containsNul(b))return null;try{return StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(b)).toString();}catch(CharacterCodingException e){return null;}}
     private boolean containsNul(byte[] b){for(byte x:b)if(x==0)return true;return false;}
     private Retained retain(String text,int max,ContextCandidate candidate){

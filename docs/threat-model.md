@@ -2,7 +2,7 @@
 
 ## Scope
 
-This threat model covers the planned path from GitHub webhooks through durable processing, context retrieval, analysis, and GitHub review publication, plus the future administrative frontend and software supply chain. M8 adds a disabled-by-default, bounded structured-generation boundary and OpenAI adapter. Tenant persistence, actual review analysis, and publication remain future scope.
+This threat model covers the planned path from GitHub webhooks through durable processing, context retrieval, analysis, and GitHub review publication, plus the future administrative frontend and software supply chain. M9 adds disabled-by-default candidate review analysis over bounded exact-revision context. Tenant persistence, final suppression/ranking, and publication remain future scope.
 
 ## Assets
 
@@ -41,6 +41,10 @@ Trust boundaries exist between GitHub and webhook ingestion, clients and the fut
 | Redirect or pagination credential exfiltration | Installation token reaches an attacker-controlled host | Disable redirects, never follow response-supplied pagination URLs, and derive bounded page requests on the configured GitHub client base |
 | Malicious patch/path content | Filesystem traversal, prompt injection, log injection, or secret-shaped content propagation | Keep paths opaque and in-memory, perform no filesystem operations or code execution, redact string forms/logs, and treat patches only as bounded untrusted data |
 | AI provider failures or hostile output | Stalled jobs, corrupted state, fabricated findings, or unsafe comments | Use timeouts and bounded retries, classify errors, validate schemas and evidence, treat output as untrusted candidates, allow deterministic-only degradation, and prevent direct publication |
+| Source attempts to override review instructions | Secret disclosure, tool abuse, policy bypass, or attacker-selected findings | Keep application instructions separate from JSON-marked untrusted data, enable no tools or URL access, and test hostile instruction strings as inert source text |
+| Hallucinated path or line | Misleading comment on unchanged/unrelated code | Require exact canonical changed-file paths and real new-side/HEAD line evidence; exclude previous rename, auxiliary-only, removed-HEAD, and unmapped locations without inventing replacements |
+| Structured-output flooding or schema abuse | Excess cost, memory pressure, or noisy reviews | Use strict additional-property-free schema, bounded output tokens, maximum finding count and field lengths, then independently validate the parsed domain |
+| Repeated provider calls | Multiplied cost and latency for one attempt | Make exactly one provider invocation per logical M9 analysis and bound provider-level retries; defer any second-opinion/escalation policy |
 | Supply-chain compromise | Malicious code executes in CI, builds, or production | Minimize and review dependencies, pin CI actions, scan dependencies and secrets, separate forked PR workflows from secrets, use least-privilege build identities, and verify release provenance |
 
 ## Abuse cases across the review pipeline
@@ -65,7 +69,7 @@ An external provider may be unavailable, slow, return malformed results, retain 
 
 M7 reduces source-exposure and cost risk by selecting before fetching, using immutable revision SHAs, rejecting unsafe repository paths, suppressing generated/vendor and external-package candidates, and enforcing independent candidate, request, file, line, and byte ceilings. Optional misses produce explicit partial context; authentication, repository identity, rate-limit, and transient failures retain M6/M4 classification. Source is ephemeral and is never logged, persisted, executed, or treated as instructions.
 
-M8 keeps application instructions structurally separate from hostile repository input, enables no model tools or URL access, and requests only caller-schema structured JSON. Independent input, schema, output-token, timeout, and retry ceilings limit cost and availability impact. The API key and content never enter string representations, logs, persistence, Actuator, or safe error codes. Provider output, refusal, incomplete results, and malformed JSON are not authority or successful review results. The remaining risk is that source will cross the configured provider boundary once M9 invokes it; tenant policy, minimization, validation, and privacy disclosure must be completed before production review enablement.
+M8 keeps application instructions structurally separate from hostile repository input, enables no model tools or URL access, and requests only caller-schema structured JSON. M9 now sends the minimum bounded M7 evidence across that configured provider boundary when AI and the worker are explicitly enabled. The engine maps diff coordinates deterministically, validates strict structured candidates again against changed paths and supplied lines, and never publishes or persists them. Independent input, schema, finding, output-token, timeout, and retry ceilings limit cost and availability impact. Tenant policy, consent, data-use disclosure, final M10 suppression, and M11 publication controls remain required before production review enablement.
 
 AI analysis can be wrong even after validation, GitHub permissions still carry impact, and software dependencies cannot be made risk-free. The product reduces these risks through bounded authority, high-confidence publication, human review, monitoring, and incident response.
 

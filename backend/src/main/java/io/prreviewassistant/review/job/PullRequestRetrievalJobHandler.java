@@ -6,6 +6,12 @@ import io.prreviewassistant.review.retrieval.PullRequestLoadResult;
 import io.prreviewassistant.review.retrieval.PullRequestLoader;
 import io.prreviewassistant.review.context.ReviewContextBuildResult;
 import io.prreviewassistant.review.context.ReviewContextBuilder;
+import io.prreviewassistant.review.analysis.ReviewAnalysisException;
+import io.prreviewassistant.review.analysis.ReviewEngine;
+import io.prreviewassistant.ai.AiProviderErrorType;
+import io.prreviewassistant.ai.AiProviderException;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -13,10 +19,25 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
 
     private final PullRequestLoader loader;
     private final ReviewContextBuilder contextBuilder;
+    private final ReviewEngine reviewEngine;
 
-    PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder) {
+    @Autowired
+    PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
+            ObjectProvider<ReviewEngine> reviewEngineProvider) {
         this.loader = loader;
         this.contextBuilder = contextBuilder;
+        this.reviewEngine = reviewEngineProvider.getIfAvailable();
+    }
+
+    PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
+            ReviewEngine reviewEngine) {
+        this.loader = loader;
+        this.contextBuilder = contextBuilder;
+        this.reviewEngine = reviewEngine;
+    }
+
+    PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder) {
+        this(loader, contextBuilder, (ReviewEngine) null);
     }
 
     @Override
@@ -38,8 +59,36 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
 
     private ReviewJobExecutionResult handleContext(ReviewContextBuildResult result) {
         return switch (result.outcome()) {
-            case READY, PARTIAL -> ReviewJobExecutionResult.terminal("REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED");
+            case READY, PARTIAL -> analyze(result);
             case UNAVAILABLE -> ReviewJobExecutionResult.terminal("REVIEW_CONTEXT_UNAVAILABLE");
+        };
+    }
+
+    private ReviewJobExecutionResult analyze(ReviewContextBuildResult result) {
+        if (reviewEngine == null) {
+            return ReviewJobExecutionResult.terminal("REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED");
+        }
+        try {
+            reviewEngine.analyze(result.context());
+            return ReviewJobExecutionResult.terminal("REVIEW_PUBLISHING_NOT_IMPLEMENTED");
+        } catch (AiProviderException exception) {
+            return map(exception.errorType());
+        } catch (ReviewAnalysisException exception) {
+            return ReviewJobExecutionResult.terminal("AI_INVALID_OUTPUT");
+        }
+    }
+
+    private ReviewJobExecutionResult map(AiProviderErrorType type) {
+        return switch (type) {
+            case RATE_LIMITED -> ReviewJobExecutionResult.retryable("AI_RATE_LIMITED");
+            case TRANSIENT -> ReviewJobExecutionResult.retryable("AI_TRANSIENT_FAILURE");
+            case TIMEOUT -> ReviewJobExecutionResult.retryable("AI_TIMEOUT");
+            case AUTHENTICATION -> ReviewJobExecutionResult.terminal("AI_AUTHENTICATION_FAILED");
+            case PERMISSION_DENIED -> ReviewJobExecutionResult.terminal("AI_PERMISSION_DENIED");
+            case MODEL_UNAVAILABLE -> ReviewJobExecutionResult.terminal("AI_MODEL_UNAVAILABLE");
+            case INVALID_REQUEST, INPUT_TOO_LARGE, OUTPUT_INVALID ->
+                    ReviewJobExecutionResult.terminal("AI_INVALID_OUTPUT");
+            case PROVIDER_FAILURE -> ReviewJobExecutionResult.terminal("AI_ANALYSIS_FAILED");
         };
     }
 
