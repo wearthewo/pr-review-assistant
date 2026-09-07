@@ -38,6 +38,18 @@ github:
     max-body-size: ${GITHUB_WEBHOOK_MAX_BODY_SIZE:1MB}
 
 review:
+  ai:
+    enabled: ${REVIEW_AI_ENABLED:false}
+    provider: ${AI_PROVIDER:openai}
+    max-input-chars: ${AI_MAX_INPUT_CHARS:120000}
+    max-schema-size: ${AI_MAX_SCHEMA_BYTES:64KB}
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      model: ${OPENAI_MODEL:gpt-5.6-terra}
+      reasoning-effort: ${OPENAI_REASONING_EFFORT:low}
+      max-output-tokens: ${OPENAI_MAX_OUTPUT_TOKENS:2048}
+      timeout: ${OPENAI_TIMEOUT:60s}
+      max-retries: ${OPENAI_MAX_RETRIES:1}
   context:
     enabled: ${REVIEW_CONTEXT_ENABLED:true}
     max-files: ${REVIEW_CONTEXT_MAX_FILES:12}
