@@ -79,7 +79,8 @@ public final class PullRequestLoader {
             }
             if (!response.hasNextPage()) {
                 return PullRequestLoadResult.ready(new PullRequestSnapshot(
-                        target.installationId(), target.repositoryId(), target.pullRequestNumber(),
+                        target.installationId(), target.repositoryId(), repository.owner(), repository.name(),
+                        target.pullRequestNumber(),
                         pullRequest.headSha(), pullRequest.baseSha(), pullRequest.draft(), files));
             }
             if (page == properties.maxPages()) {

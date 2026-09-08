@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, a durable worker, bounded exact-revision context retrieval, a disabled-by-default structured AI provider boundary, candidate review analysis, and deterministic false-positive suppression. It contains no publishing, tenant persistence, or arbitrary repository traversal.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, a durable worker, bounded exact-revision context retrieval, a disabled-by-default structured AI provider boundary, candidate review analysis, deterministic false-positive suppression, and durable GitHub review publication. It contains no tenant persistence or arbitrary repository traversal.
 
 ## Requirements
 
@@ -45,7 +45,7 @@ Check readiness at `http://localhost:8080/actuator/health`. Only the health Actu
 
 On Windows, run `.\mvnw.cmd clean verify`. Integration tests start their own pinned PostgreSQL container and do not use the local Compose database.
 
-Flyway owns schema changes. V1 creates `github_webhook_deliveries`; V2 creates `review_jobs` and its polling indexes and state constraints; M5 migration V3 adds the optional all-or-none GitHub review target and its unique constraint. The nullable shape preserves M4 infrastructure-only placeholder jobs, while every M5 production job has all four target fields. Hibernate uses `ddl-auto: validate` and never creates or updates the schema.
+Flyway owns schema changes. V1 creates `github_webhook_deliveries`; V2 creates `review_jobs`; V3 adds the exact GitHub review target and its uniqueness constraint; V4 adds `review_publications` and the separate leased `publication_jobs` queue. Earlier migrations remain immutable. Hibernate uses `ddl-auto: validate` and never creates or updates the schema.
 
 ## GitHub App authentication
 
@@ -75,7 +75,15 @@ M10 converts M9 candidates into an immutable `ValidatedReview` for future public
 
 Obvious generic advice, insufficient evidence, inflated CRITICAL impact, low-confidence/LOW-severity findings, unsupported locations, same-category exact/near duplicates, and candidates beyond the final cap are suppressed. A fixed pipeline assigns one primary aggregate reason to each rejected candidate. Normalized token-set overlap is bounded and deterministic; it is not semantic proof. Accepted findings have stable severity/confidence/path/line/ID ordering.
 
-Suppression is memory-only and has zero provider cost: it does not call AI, GitHub, URLs, tools, the filesystem, or persistence. Finding text remains untrusted inert text and is absent from logs and string representations. Zero accepted findings is successful. M11 owns publication, and the worker still terminates at `REVIEW_PUBLISHING_NOT_IMPLEMENTED`.
+Suppression is memory-only and has zero provider cost: it does not call AI, GitHub, URLs, tools, the filesystem, or persistence. Finding text remains untrusted inert text and is absent from logs and string representations. Zero accepted findings is successful and creates no publication or GitHub request.
+
+## GitHub review publication
+
+M11 uses the installation token boundary from M2 to call `POST /repos/{owner}/{repo}/pulls/{number}/reviews`. The request is one `COMMENT` review with the immutable job head SHA as `commit_id`; inline findings use `line` and `side=RIGHT`, with `start_line` and `start_side=RIGHT` for multiline findings. File-level findings remain in the summary and never receive invented coordinates. The GitHub App needs the `Pull requests: write` repository permission.
+
+After suppression, non-empty output is rendered and sanitized, then the version-1 payload and a publication job are inserted atomically. Only accepted output, the trusted authenticated repository route, exact target, and bounded operational metadata are persisted. Prompts, raw model output, rejected findings, patches, context, credentials, and GitHub response bodies are not persisted. The analysis job completes only after durable handoff; publication-only retries do not call AI or rebuild context.
+
+Publication jobs use PostgreSQL `FOR UPDATE SKIP LOCKED`, leases, claim tokens, bounded attempts, and deterministic exponential backoff. Before the POST, the publication becomes `AMBIGUOUS`. If the outcome is uncertain, the next attempt first lists reviews in bounded, locally derived pages and searches for the exact application-owned marker. Finding text is sanitized so it cannot forge that marker. A match records the GitHub review ID without another POST. Publication is disabled by default with `REVIEW_PUBLICATION_ENABLED=false`: non-empty analysis still completes its durable handoff, but the disabled scheduler performs no GitHub writes. Zero findings complete without any publication record or GitHub call.
 
 ## Repository context
 
@@ -117,4 +125,4 @@ M4 stores review work in PostgreSQL with `READY`, `PROCESSING`, `COMPLETED`, and
 
 Expired `PROCESSING` leases are reclaimed by a later poll when attempts remain. An expired final attempt becomes `FAILED`. Retryable failures return to `READY` with deterministic `baseDelay * 2^(attempt-1)` backoff capped by the configured maximum; only a bounded safe error code is stored. Terminal failures and exhausted attempts become `FAILED` immediately. No payload, stack trace, external response, credential, or source content is stored in M4 jobs.
 
-The scheduler is disabled by default and invokes a separately testable poll-once worker. Configure it with `REVIEW_WORKER_ENABLED`, `REVIEW_WORKER_POLL_INTERVAL`, `REVIEW_WORKER_BATCH_SIZE`, `REVIEW_WORKER_LEASE_DURATION`, `REVIEW_JOB_MAX_ATTEMPTS`, `REVIEW_JOB_RETRY_BASE_DELAY`, and `REVIEW_JOB_RETRY_MAX_DELAY`. Rate-limit and transient GitHub failures retry; stale revisions, inaccessible resources, malformed responses, and excessive PRs terminate with bounded codes. With AI disabled, successful context construction ends as `REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED`. With AI enabled, the worker makes exactly one analysis call, applies M10 suppression without another provider call, and ends successful validation—including zero accepted findings—as `REVIEW_PUBLISHING_NOT_IMPLEMENTED`, never `COMPLETED`. Redis/Kafka, output persistence, and review publication remain deferred.
+The analysis scheduler is disabled by default and invokes a separately testable poll-once worker. Rate-limit and transient GitHub failures retry; stale revisions, inaccessible resources, malformed responses, and excessive PRs terminate with bounded codes. With AI disabled, successful context construction ends as `REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED`. With publication disabled, non-empty validated output is durably queued but not sent; zero findings complete successfully. When publication is enabled, the independent publication worker owns all GitHub-write retries. Redis/Kafka and distributed queue coordination remain deferred.

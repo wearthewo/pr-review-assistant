@@ -2,7 +2,7 @@
 
 ## Current state
 
-The repository is at Milestone M10. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL, Flyway, JPA validation, Actuator, Testcontainers, GitHub App authentication, secure webhook/job ingestion, a leased worker, bounded exact-revision context, provider-neutral structured AI transport, candidate review analysis, and deterministic finding suppression. Local infrastructure contains PostgreSQL only. There is no review publication, tenant schema, frontend, OpenAPI specification, or CI/CD workflow.
+The repository is at Milestone M11. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL, Flyway, JPA validation, Actuator, Testcontainers, GitHub App authentication, secure webhook/job ingestion, leased analysis and publication workers, bounded exact-revision context, provider-neutral structured AI transport, deterministic suppression, and durable GitHub review publication. Local infrastructure contains PostgreSQL only. There is no tenant schema, frontend, OpenAPI specification, or CI/CD workflow.
 
 ## Prerequisites
 
@@ -96,17 +96,17 @@ PR/repository metadata responses have a separate fixed 512 KiB bound. A missing 
 
 ## Database evolution
 
-Flyway is enabled and is the sole schema migration mechanism. V1 creates `github_webhook_deliveries`; V2 creates the leased `review_jobs` queue; V3 adds installation ID, numeric repository ID, PR number, and 40-64 character hexadecimal head object ID. The target columns are all null only for M4 infrastructure fixtures and all present for M5 jobs. Their database unique constraint is the authoritative same-revision idempotency guard. Earlier migrations are unchanged. Integration tests run the full chain against PostgreSQL 18.6 through Testcontainers.
+Flyway is enabled and is the sole schema migration mechanism. V1 creates `github_webhook_deliveries`; V2 creates the leased `review_jobs` queue; V3 adds the exact GitHub review target and its same-revision uniqueness guard; V4 adds immutable publication records and the separate leased publication queue. Earlier migrations are unchanged. Integration tests run the full chain against PostgreSQL 18.6 through Testcontainers.
 
 Job creation persists `READY` with attempt zero, an explicit maximum, and `next_attempt_at` equal to the injected clock. A claim transaction first terminalizes expired final attempts, then selects due `READY` and reclaimable `PROCESSING` rows using `FOR UPDATE SKIP LOCKED`, ordered by `next_attempt_at`, `created_at`, and UUID. It increments attempts and assigns a UUID claim token plus lease before commit. The handler executes after claim commit. Completion, retry, and failure each use a separate conditional transaction requiring job ID, `PROCESSING`, and the current token. Retry clears ownership and schedules `base * 2^(attempt-1)` up to the cap. This is at-least-once execution; future external effects must be independently idempotent.
 
-Only validated uppercase safe error codes up to 64 characters are stored. Do not persist or log exception messages, stack traces, payloads, source content, provider response bodies, or credentials. Redis/Kafka, distributed scheduler coordination, priorities, tenant mapping, snapshot/analysis persistence, final finding policy, publication, and cleanup/retention remain deferred.
+Only validated uppercase safe error codes up to 64 characters are stored. Publication V1 payloads retain only sanitized accepted output and trusted routing/target metadata. Do not persist or log exception messages, stack traces, webhook payloads, source, patches, prompts, raw provider output, rejected findings, provider response bodies, or credentials. Redis/Kafka, distributed scheduler coordination, priorities, tenant mapping, cleanup/retention, and customer deletion controls remain deferred.
 
 The endpoint returns `202` for both new and duplicate valid deliveries, `400` for malformed metadata or JSON, `401` for any missing, malformed, or invalid signature, `413` for an oversized body, `415` for unsupported media types, and `5xx` when durable storage fails. Error bodies are empty. After M3 verification, M5 handles only `pull_request` actions `opened`, `reopened`, and `synchronize`. Other events/actions and signed but incomplete relevant payloads commit the webhook without a job and still return `202`. For reviewable payloads, webhook and job insertions share one transaction; job insertion failure rolls both back. Distinct deliveries for one revision remain distinct webhook rows but use one job through PostgreSQL `ON CONFLICT DO NOTHING`.
 
 The production job-creation operation accepts only a validated `ReviewTarget`. M6 supplies its installation ID to the existing M2 token provider, resolves GitHub's mutable owner/name from `GET /repositories/{id}`, verifies that numeric identity, fetches the PR, and compares the returned head SHA before requesting files. `Link` only signals another page; the client increments its own bounded page number on the configured base URL, and redirects are disabled.
 
-Keep `REVIEW_WORKER_ENABLED=false` until tenant policy and publication controls are ready. If enabled, retrieval and analysis run outside the claim transaction. Rate limits, timeouts, and transient GitHub/AI failures return bounded retryable codes; stale revisions, inaccessible resources, malformed responses, large PRs, and terminal provider failures terminate. With AI disabled, context ends at `REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED`. With AI enabled, one M9 call is made and M10 deterministically suppresses candidates without another provider call. A successful validated result—including zero accepted findings—ends at `REVIEW_PUBLISHING_NOT_IMPLEMENTED`, never `COMPLETED`. Context, patches, prompts, outputs, findings, and suppressed content are never persisted.
+Keep `REVIEW_WORKER_ENABLED=false` and `REVIEW_PUBLICATION_ENABLED=false` until tenant policy and production permission controls are ready. Analysis and publication work execute outside claim transactions. Zero accepted findings complete with no publication record or GitHub call. Non-empty output is handed to a separate durable publication queue; publication retries never rerun AI. Uncertain POST outcomes reconcile the exact marker through bounded review-list pages before another POST.
 
 ## AI provider configuration
 
@@ -120,13 +120,19 @@ Defaults bound requests to 120,000 instruction-plus-input characters, a 64 KiB s
 
 The serializer emits deterministic JSON with a clear untrusted-data marker, compact PR metadata, canonical changed paths, line-numbered unified diff evidence, deduplicated auxiliary fragments, omission reasons, and bounded budget metadata. It performs no additional GitHub call. Strict schema output is revalidated for count, enum, confidence, field size, exact changed path, and real HEAD/new-side location. Invalid semantic candidates are excluded without invented replacement data; unsafe output structure terminates with `AI_INVALID_OUTPUT`.
 
-Automated tests use `FakeAiProvider` and make no paid/network calls. Once publication exists, analysis and publishing should have a recoverable boundary so a publication-only retry does not pay for repeated AI generation. M9 deliberately does not introduce that persistence or job split.
+Automated tests use `FakeAiProvider` and a loopback GitHub server, make no paid calls, and perform no real GitHub writes. M11's durable handoff and separate publication queue ensure publication-only retries do not repeat paid generation.
 
 ## Finding suppression configuration
 
 `REVIEW_SUPPRESSION_MINIMUM_CONFIDENCE=85`, `REVIEW_SUPPRESSION_MINIMUM_SEVERITY=MEDIUM`, and `REVIEW_SUPPRESSION_MAX_PUBLISHABLE_FINDINGS=3` define the initial conservative operator policy. Confidence is restricted to 0–100, severity is the controlled review enum, and the publication-candidate cap is restricted to 1–5. These values are not repository-controlled.
 
 The fixed deterministic pipeline assigns the first failed gate as the one aggregate suppression reason. Same-category textual overlap requires an overlapping location, at least four shared normalized tokens, and Jaccard similarity of at least 0.60; there are no embeddings or external libraries. Model confidence is an input to policy, not proof that a finding is correct. Do not tune these defaults without beta evidence.
+
+## Review publication configuration
+
+GitHub review writes require the GitHub App repository permission `Pull requests: write`. `REVIEW_PUBLICATION_ENABLED` defaults to `false`. Non-empty validated output is still handed off durably while disabled; only the scheduler and GitHub write are withheld, so later enablement cannot require another AI call. Summary, comment, encoded-payload, reconciliation-page, attempt, backoff, polling, batch, and lease limits use the `REVIEW_PUBLICATION_*` variables in `.env.example`. Enabling analysis alone does not enable GitHub writes.
+
+The publisher sends one `COMMENT` review with `commit_id` equal to the immutable job SHA. Single-line comments use `line` and `side=RIGHT`; multiline comments also use `start_line` and `start_side=RIGHT`. Do not use deprecated diff `position`. File-level findings are summary items. A local or automated test must use the mock GitHub server; a real smoke test is optional and must use explicitly supplied GitHub App credentials.
 
 ## Troubleshooting and completion
 

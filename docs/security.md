@@ -103,8 +103,8 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 - The engine requests at most five findings by default (hard ceiling ten), one provider call per logical attempt, the configured balanced model tier, economical reasoning, and the existing output-token ceiling. Empty findings are successful.
 - Strict JSON Schema is followed by domain validation. Unknown fields, invalid enums/ranges, oversized strings, and output flooding fail safely. Low-confidence, duplicate, unknown-path, auxiliary-only, previous-rename-path, and unsupported-line candidates are excluded.
 - New-side coordinates come only from a bounded linear unified-diff mapping or explicit M7 HEAD changed-file context. Malformed hunks lose precision; removed files cannot claim HEAD line locations; no replacement location is invented.
-- Findings, source, prompts, schema bodies, and provider output remain in memory only and are absent from logs, errors, queue state, Actuator, and string representations. Safe metadata contains only provider/model, duration, attempt ceiling, numeric token usage, and finding count.
-- Retryable provider failures map to bounded retry codes; authentication, permission, unavailable-model, malformed-output, and other terminal failures map to bounded terminal codes. Successful analysis stops before publication and cannot mark a review completed.
+- Candidate findings, source, prompts, schema bodies, and raw provider output remain in memory and are absent from logs, errors, queue state, Actuator, and string representations. M11 alone persists a sanitized, bounded rendering of accepted findings.
+- Retryable provider failures map to bounded retry codes; authentication, permission, unavailable-model, malformed-output, and other terminal failures map to bounded terminal codes. Non-empty successful analysis completes only after durable publication handoff; zero findings complete without a publication.
 
 ### Finding-suppression controls implemented in M10
 
@@ -114,6 +114,15 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 - Suppression exposes only candidate/accepted/suppressed counts and controlled reason counts. It does not persist or log paths, finding bodies, source, model output, or suggested fixes.
 - Finding text, URLs, shell-like strings, HTML, secret-like strings, and paths remain inert. Suppression performs no AI, GitHub, network, URL, filesystem, database, code-execution, or tool call.
 - Suppression is an explainable support filter, not proof of semantic correctness. Model confidence is not authority and cannot bypass independent publication controls.
+
+### GitHub review-publication controls implemented in M11
+
+- Publication is separately disabled by default and uses only operation-scoped installation tokens; tokens and Authorization headers are never persisted, logged, or included in errors.
+- Only sanitized accepted findings are rendered. Control characters, HTML/comments, marker-like content, Markdown constructs, links, and mentions are neutralized or removed; the application alone appends the exact idempotency marker.
+- A versioned bounded payload and publication job commit atomically. Prompts, raw model output, rejected findings, suppression details, source, patches, secrets, and GitHub error bodies are excluded.
+- Repository owner/name come from M6's authenticated numeric-ID resolution and are routing metadata only. Numeric repository ID and exact head SHA remain authoritative. A rename-induced 404 fails terminally in M11 rather than following an authenticated redirect; safe route refresh is deferred.
+- The publisher marks a record `AMBIGUOUS` before POST. After any uncertain outcome it reconciles bounded, locally derived review-list pages for the exact marker before another write. Redirects and arbitrary pagination URLs remain disabled.
+- GitHub writes occur outside transactions. Queue leases and claim tokens reject stale owners; database uniqueness protects analysis-job and publication-key idempotency.
 
 ## Untrusted repository and model content
 
@@ -129,7 +138,7 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 
 - Bound webhook body size, pull request size, fetched content, model input/output, deterministic analysis work, processing time, retries, concurrency, and stored diagnostic data.
 - Apply per-installation and service-wide quotas so a single tenant or oversized pull request cannot exhaust shared resources.
-- Respect GitHub rate-limit and abuse responses, use conditional or cached retrieval where safe, and back off with jitter rather than retrying aggressively.
+- Respect GitHub rate-limit and abuse responses, use conditional or cached retrieval where safe, and apply bounded queue backoff rather than retrying aggressively.
 - Classify AI provider timeouts, throttling, malformed output, and outages. Retry only safe transient failures within a budget, use circuit breaking where demonstrated, and complete with deterministic results or a clear failure state when appropriate.
 - Never publish unchecked fallback text after an AI failure.
 

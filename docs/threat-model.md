@@ -2,7 +2,7 @@
 
 ## Scope
 
-This threat model covers the planned path from GitHub webhooks through durable processing, context retrieval, analysis, and GitHub review publication, plus the future administrative frontend and software supply chain. M10 adds deterministic suppression of M9 candidates. Tenant persistence and publication remain future scope.
+This threat model covers the implemented path from GitHub webhooks through durable processing, context retrieval, analysis, suppression, and disabled-by-default GitHub review publication, plus the future administrative frontend and software supply chain. Tenant persistence remains future scope.
 
 ## Assets
 
@@ -50,6 +50,16 @@ Trust boundaries exist between GitHub and webhook ingestion, clients and the fut
 | Malicious content in model findings | URL fetching, command execution, local path access, HTML injection, or secret leakage | Treat every field as inert text; perform normalization only; make no network, URL, filesystem, shell, rendering, or tool call; keep content out of logs |
 | Suppression analytics leakage | Rejected source or finding content reaches durable telemetry | Expose aggregate controlled reason counts only; do not persist or log paths, titles, evidence, explanations, fixes, source, prompts, or model output |
 | Nondeterministic ranking | Retries or input ordering produce inconsistent publication candidates | Use fixed gates, explicit severity order, deterministic tie-breaks and IDs, immutable output, and stable final sorting |
+| Ambiguous GitHub write | A timeout after acceptance causes a retry to publish a duplicate review | Mark the publication ambiguous before POST; reconcile the exact application marker through bounded derived pages before another POST |
+| Marker forgery | Model-controlled finding text impersonates an earlier publication | Strip HTML comments from untrusted text and append the marker only in trusted rendering code; compare the complete 64-hex-key marker |
+| Publication retry reruns AI | Transient GitHub failure multiplies paid calls and may change findings | Persist the final versioned payload and enqueue a separate publication job atomically; publication code has no analysis dependency |
+| Unsafe Markdown output | Mentions, HTML, links, headings, task lists, or fences cause unwanted effects | Normalize control characters and neutralize active Markdown/HTML forms before persistence and publication; enforce per-field and total bounds |
+| Notification spam | Duplicate or low-value reviews create unwanted developer notifications | Publish one `COMMENT` review per non-empty validated result, remain disabled by default, and reconcile ambiguous outcomes before retrying |
+| Stale-SHA publication | Findings for an old revision are attached to a newer head | Send the immutable reviewed SHA as `commit_id`; never let GitHub select the current head implicitly |
+| Publication-payload exposure | Persisted model-derived findings reveal repository information | Persist only sanitized accepted user-facing output and exact target metadata; exclude prompts, context, patches, rejected findings, secrets, and raw responses |
+| Remote reconciliation spoofing | Another actor copies the non-secret marker and tricks local reconciliation | Scope lookup to the authenticated exact repository/PR and require the complete deterministic key marker; app-author identity verification is deferred until a stable identity input exists |
+| Repository rename during publication | Stored routing names no longer address the numeric repository identity | Treat owner/name only as authenticated routing metadata and fail a 404 terminally; do not follow redirects with credentials; safe route refresh is deferred |
+| Secondary rate limiting | Aggressive publication retries amplify GitHub abuse protection | Treat 403/422 with explicit rate-limit headers and 429 as retryable, then use bounded durable queue backoff without in-request sleeps |
 | Supply-chain compromise | Malicious code executes in CI, builds, or production | Minimize and review dependencies, pin CI actions, scan dependencies and secrets, separate forked PR workflows from secrets, use least-privilege build identities, and verify release provenance |
 
 ## Abuse cases across the review pipeline
@@ -74,7 +84,7 @@ An external provider may be unavailable, slow, return malformed results, retain 
 
 M7 reduces source-exposure and cost risk by selecting before fetching, using immutable revision SHAs, rejecting unsafe repository paths, suppressing generated/vendor and external-package candidates, and enforcing independent candidate, request, file, line, and byte ceilings. Optional misses produce explicit partial context; authentication, repository identity, rate-limit, and transient failures retain M6/M4 classification. Source is ephemeral and is never logged, persisted, executed, or treated as instructions.
 
-M8 keeps application instructions structurally separate from hostile repository input, enables no model tools or URL access, and requests only caller-schema structured JSON. M9 sends the minimum bounded M7 evidence across that configured provider boundary when AI and the worker are explicitly enabled. M10 adds no provider or external call: it applies conservative support gates, same-category duplicate resolution, stable ranking, and an initial three-candidate cap, while retaining aggregate suppression reasons only. These rules reduce obvious false positives but cannot prove semantic correctness. Tenant policy, consent, data-use disclosure, and M11 publication controls remain required before production review enablement.
+M8 keeps application instructions separate from hostile repository input, enables no model tools or URL access, and requests only structured JSON. M9 sends the minimum bounded M7 evidence across that boundary. M10 applies conservative support gates and ranking without another provider call. M11 persists only sanitized accepted output, separates publication retries from paid analysis, and reconciles ambiguous GitHub writes with an exact application marker. These controls reduce false positives and duplicate writes but cannot prove semantic correctness. Tenant policy, consent, retention, deletion, and data-use disclosure remain required before production enablement.
 
 AI analysis can be wrong even after validation, GitHub permissions still carry impact, and software dependencies cannot be made risk-free. The product reduces these risks through bounded authority, high-confidence publication, human review, monitoring, and incident response.
 

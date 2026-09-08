@@ -53,11 +53,12 @@ final class GitHubMockServer implements AutoCloseable {
     }
 
     private void handle(HttpExchange exchange) throws IOException {
-        exchange.getRequestBody().readAllBytes();
+        String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         requests.add(new RecordedRequest(
                 exchange.getRequestMethod(),
                 exchange.getRequestURI(),
-                exchange.getRequestHeaders()));
+                exchange.getRequestHeaders(),
+                requestBody));
         Response response = responses.poll();
         if (response == null) {
             response = new Response(500, "{}", Map.of(), null, null);
@@ -84,7 +85,7 @@ final class GitHubMockServer implements AutoCloseable {
         server.stop(0);
     }
 
-    record RecordedRequest(String method, URI uri, com.sun.net.httpserver.Headers headers) {
+    record RecordedRequest(String method, URI uri, com.sun.net.httpserver.Headers headers, String body) {
     }
 
     private record Response(
