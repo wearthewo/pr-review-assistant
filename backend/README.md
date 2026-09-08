@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, a durable worker, bounded exact-revision context retrieval, a disabled-by-default structured AI provider boundary, and candidate review analysis. It contains no final finding suppression, publishing, tenant persistence, or arbitrary repository traversal.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, a durable worker, bounded exact-revision context retrieval, a disabled-by-default structured AI provider boundary, candidate review analysis, and deterministic false-positive suppression. It contains no publishing, tenant persistence, or arbitrary repository traversal.
 
 ## Requirements
 
@@ -69,6 +69,14 @@ The default ceilings are 1,000 files, 10 pages, 256 KiB per retained patch, 5 Mi
 
 Snapshots live only in memory and contain numeric identity, head/base SHAs, draft state, and bounded changed-file metadata. Repository paths remain opaque strings: they are never resolved or opened locally. Patches are untrusted data, never logged or placed in errors, and are not interpreted as instructions. No raw blobs or surrounding files are fetched.
 
+## Finding suppression
+
+M10 converts M9 candidates into an immutable `ValidatedReview` for future publication. The initial operator-owned policy requires confidence 85, severity MEDIUM or higher, and retains at most three findings. Line findings must cover bounded, real new-side evidence and intersect an added line; patch-unavailable line findings instead require exact HEAD coordinates from M7 changed-file context. File-level findings are accepted only conservatively for removed files with explicit deletion relevance or patch-unavailable files with trustworthy changed-file context.
+
+Obvious generic advice, insufficient evidence, inflated CRITICAL impact, low-confidence/LOW-severity findings, unsupported locations, same-category exact/near duplicates, and candidates beyond the final cap are suppressed. A fixed pipeline assigns one primary aggregate reason to each rejected candidate. Normalized token-set overlap is bounded and deterministic; it is not semantic proof. Accepted findings have stable severity/confidence/path/line/ID ordering.
+
+Suppression is memory-only and has zero provider cost: it does not call AI, GitHub, URLs, tools, the filesystem, or persistence. Finding text remains untrusted inert text and is absent from logs and string representations. Zero accepted findings is successful. M11 owns publication, and the worker still terminates at `REVIEW_PUBLISHING_NOT_IMPLEMENTED`.
+
 ## Repository context
 
 M7 selects minimum sufficient context from M6 patches. It fetches a changed file only when its patch is unavailable and considers confidently local Java, JavaScript/TypeScript, and Python imports plus bounded companion candidates. Documentation, generated/vendor output, lockfiles, package imports, and unsupported-language guesses cause no extra request. Candidates are ranked by controlled reason, estimated cost, and path; duplicate path/revision pairs are fetched once.
@@ -91,7 +99,7 @@ M9 serializes the exact M7 context deterministically as JSON marked `UNTRUSTED_R
 
 The application-owned policy asks for at most five candidate findings (hard ceiling ten) at confidence 70 or above. Supported categories are correctness, security, concurrency, transactional integrity, reliability, API misuse, and significant performance. Review findings must describe a concrete failure mode, not a code-quality preference. The absence of sufficient evidence is a reason to omit a finding, and an empty finding list is successful analysis.
 
-Strict Structured Output schema validation is followed by deterministic domain checks. Candidate paths must exactly match a current changed-file path; auxiliary-only and previous rename paths are excluded. Supplied lines must be bounded HEAD/new-side evidence. Removed files support only file-level candidates, while a patch-unavailable changed file can use real HEAD coordinates only when M7 retained changed-file context. Candidate findings and token metadata are in-memory only. M10 owns stronger suppression/ranking; M11 owns publication.
+Strict Structured Output schema validation is followed by deterministic domain checks. Candidate paths must exactly match a current changed-file path; auxiliary-only and previous rename paths are excluded. Supplied lines must be bounded HEAD/new-side evidence. Removed files support only file-level candidates, while a patch-unavailable changed file can use real HEAD coordinates only when M7 retained changed-file context. Candidate findings and token metadata are in-memory only. M10 applies stronger suppression/ranking; M11 owns publication.
 
 ## GitHub webhook ingestion
 
@@ -109,4 +117,4 @@ M4 stores review work in PostgreSQL with `READY`, `PROCESSING`, `COMPLETED`, and
 
 Expired `PROCESSING` leases are reclaimed by a later poll when attempts remain. An expired final attempt becomes `FAILED`. Retryable failures return to `READY` with deterministic `baseDelay * 2^(attempt-1)` backoff capped by the configured maximum; only a bounded safe error code is stored. Terminal failures and exhausted attempts become `FAILED` immediately. No payload, stack trace, external response, credential, or source content is stored in M4 jobs.
 
-The scheduler is disabled by default and invokes a separately testable poll-once worker. Configure it with `REVIEW_WORKER_ENABLED`, `REVIEW_WORKER_POLL_INTERVAL`, `REVIEW_WORKER_BATCH_SIZE`, `REVIEW_WORKER_LEASE_DURATION`, `REVIEW_JOB_MAX_ATTEMPTS`, `REVIEW_JOB_RETRY_BASE_DELAY`, and `REVIEW_JOB_RETRY_MAX_DELAY`. Rate-limit and transient GitHub failures retry; stale revisions, inaccessible resources, malformed responses, and excessive PRs terminate with bounded codes. With AI disabled, successful context construction ends as `REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED`. With AI enabled, the worker makes exactly one analysis call and successful analysis—including zero findings—ends as `REVIEW_PUBLISHING_NOT_IMPLEMENTED`, never `COMPLETED`. Redis/Kafka, output persistence, final suppression/ranking, and review publication remain deferred.
+The scheduler is disabled by default and invokes a separately testable poll-once worker. Configure it with `REVIEW_WORKER_ENABLED`, `REVIEW_WORKER_POLL_INTERVAL`, `REVIEW_WORKER_BATCH_SIZE`, `REVIEW_WORKER_LEASE_DURATION`, `REVIEW_JOB_MAX_ATTEMPTS`, `REVIEW_JOB_RETRY_BASE_DELAY`, and `REVIEW_JOB_RETRY_MAX_DELAY`. Rate-limit and transient GitHub failures retry; stale revisions, inaccessible resources, malformed responses, and excessive PRs terminate with bounded codes. With AI disabled, successful context construction ends as `REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED`. With AI enabled, the worker makes exactly one analysis call, applies M10 suppression without another provider call, and ends successful validation—including zero accepted findings—as `REVIEW_PUBLISHING_NOT_IMPLEMENTED`, never `COMPLETED`. Redis/Kafka, output persistence, and review publication remain deferred.

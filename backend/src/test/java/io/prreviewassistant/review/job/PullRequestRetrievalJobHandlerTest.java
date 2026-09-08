@@ -16,8 +16,14 @@ import io.prreviewassistant.review.context.*;
 import io.prreviewassistant.ai.AiProviderErrorType;
 import io.prreviewassistant.ai.AiProviderException;
 import io.prreviewassistant.review.analysis.ReviewAnalysisException;
+import io.prreviewassistant.review.analysis.FindingSuppressionEngine;
+import io.prreviewassistant.review.analysis.ReviewAnalysis;
 import io.prreviewassistant.review.analysis.ReviewEngine;
+import io.prreviewassistant.review.analysis.SuppressionSummary;
+import io.prreviewassistant.review.analysis.ValidatedReview;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import static org.mockito.Mockito.verify;
 
 class PullRequestRetrievalJobHandlerTest {
@@ -74,6 +80,29 @@ class PullRequestRetrievalJobHandlerTest {
         assertThat(result.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE);
         assertThat(result.errorCode().value()).isEqualTo("REVIEW_PUBLISHING_NOT_IMPLEMENTED");
         verify(fixture.engine()).analyze(fixture.context());
+        verify(fixture.suppressionEngine()).validate(
+                org.mockito.ArgumentMatchers.same(fixture.analysis()),
+                org.mockito.ArgumentMatchers.same(fixture.context()));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 3})
+    void zeroCandidatesOrAllSuppressedStillStopAtPublishingBoundary(int candidateCount) {
+        Fixture fixture = fixtureWithEngine();
+        ValidatedReview validated = mock(ValidatedReview.class);
+        when(validated.suppression()).thenReturn(
+                new SuppressionSummary(candidateCount, 0, candidateCount,
+                        candidateCount == 0 ? java.util.Map.of()
+                                : java.util.Map.of(
+                                        io.prreviewassistant.review.analysis.SuppressionReason.LOW_CONFIDENCE,
+                                        candidateCount)));
+        when(fixture.suppressionEngine().validate(fixture.analysis(), fixture.context()))
+                .thenReturn(validated);
+
+        ReviewJobExecutionResult result = fixture.handler().handle(claim(TARGET));
+
+        assertThat(result.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE);
+        assertThat(result.errorCode().value()).isEqualTo("REVIEW_PUBLISHING_NOT_IMPLEMENTED");
     }
 
     @Test
@@ -93,6 +122,19 @@ class PullRequestRetrievalJobHandlerTest {
         when(fixture.engine().analyze(fixture.context())).thenThrow(new ReviewAnalysisException());
         ReviewJobExecutionResult result = fixture.handler().handle(claim(TARGET));
         assertThat(result.errorCode().value()).isEqualTo("AI_INVALID_OUTPUT");
+    }
+
+    @Test
+    void brokenSuppressionInvariantIsTerminalAndNotRetried() {
+        Fixture fixture = fixtureWithEngine();
+        when(fixture.suppressionEngine().validate(fixture.analysis(), fixture.context()))
+                .thenThrow(new IllegalArgumentException("untrusted finding body"));
+
+        ReviewJobExecutionResult result = fixture.handler().handle(claim(TARGET));
+
+        assertThat(result.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE);
+        assertThat(result.errorCode().value()).isEqualTo("FINDING_SUPPRESSION_INVALID")
+                .doesNotContain("untrusted finding body");
     }
 
     private void assertOutcome(
@@ -148,10 +190,16 @@ class PullRequestRetrievalJobHandlerTest {
         ReviewContextBuilder contextBuilder = mock(ReviewContextBuilder.class);
         when(contextBuilder.build(snapshot)).thenReturn(ReviewContextBuildResult.ready(context));
         ReviewEngine engine = mock(ReviewEngine.class);
-        return new Fixture(new PullRequestRetrievalJobHandler(loader, contextBuilder, engine), engine, context);
+        FindingSuppressionEngine suppressionEngine = mock(FindingSuppressionEngine.class);
+        ReviewAnalysis analysis = mock(ReviewAnalysis.class);
+        when(engine.analyze(context)).thenReturn(analysis);
+        return new Fixture(new PullRequestRetrievalJobHandler(
+                loader, contextBuilder, engine, suppressionEngine),
+                engine, suppressionEngine, analysis, context);
     }
 
-    private record Fixture(PullRequestRetrievalJobHandler handler, ReviewEngine engine, ReviewContext context) { }
+    private record Fixture(PullRequestRetrievalJobHandler handler, ReviewEngine engine,
+            FindingSuppressionEngine suppressionEngine, ReviewAnalysis analysis, ReviewContext context) { }
 
     private ClaimedReviewJob claim(ReviewTarget target) {
         Instant now = Instant.parse("2026-09-06T12:00:00Z");

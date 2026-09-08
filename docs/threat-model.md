@@ -2,7 +2,7 @@
 
 ## Scope
 
-This threat model covers the planned path from GitHub webhooks through durable processing, context retrieval, analysis, and GitHub review publication, plus the future administrative frontend and software supply chain. M9 adds disabled-by-default candidate review analysis over bounded exact-revision context. Tenant persistence, final suppression/ranking, and publication remain future scope.
+This threat model covers the planned path from GitHub webhooks through durable processing, context retrieval, analysis, and GitHub review publication, plus the future administrative frontend and software supply chain. M10 adds deterministic suppression of M9 candidates. Tenant persistence and publication remain future scope.
 
 ## Assets
 
@@ -45,6 +45,11 @@ Trust boundaries exist between GitHub and webhook ingestion, clients and the fut
 | Hallucinated path or line | Misleading comment on unchanged/unrelated code | Require exact canonical changed-file paths and real new-side/HEAD line evidence; exclude previous rename, auxiliary-only, removed-HEAD, and unmapped locations without inventing replacements |
 | Structured-output flooding or schema abuse | Excess cost, memory pressure, or noisy reviews | Use strict additional-property-free schema, bounded output tokens, maximum finding count and field lengths, then independently validate the parsed domain |
 | Repeated provider calls | Multiplied cost and latency for one attempt | Make exactly one provider invocation per logical M9 analysis and bound provider-level retries; defer any second-opinion/escalation policy |
+| Weak or overconfident model findings | Generic, speculative, or severity-inflated comments erode trust | Apply fixed confidence/severity/location/evidence gates; suppress rather than rewrite; treat confidence as policy input rather than semantic proof |
+| Duplicate and overlapping findings | Repetitive comments overwhelm developers | Resolve same-category exact and strong bounded token-set overlaps deterministically, retain the stronger candidate, and cap publication candidates |
+| Malicious content in model findings | URL fetching, command execution, local path access, HTML injection, or secret leakage | Treat every field as inert text; perform normalization only; make no network, URL, filesystem, shell, rendering, or tool call; keep content out of logs |
+| Suppression analytics leakage | Rejected source or finding content reaches durable telemetry | Expose aggregate controlled reason counts only; do not persist or log paths, titles, evidence, explanations, fixes, source, prompts, or model output |
+| Nondeterministic ranking | Retries or input ordering produce inconsistent publication candidates | Use fixed gates, explicit severity order, deterministic tie-breaks and IDs, immutable output, and stable final sorting |
 | Supply-chain compromise | Malicious code executes in CI, builds, or production | Minimize and review dependencies, pin CI actions, scan dependencies and secrets, separate forked PR workflows from secrets, use least-privilege build identities, and verify release provenance |
 
 ## Abuse cases across the review pipeline
@@ -69,7 +74,7 @@ An external provider may be unavailable, slow, return malformed results, retain 
 
 M7 reduces source-exposure and cost risk by selecting before fetching, using immutable revision SHAs, rejecting unsafe repository paths, suppressing generated/vendor and external-package candidates, and enforcing independent candidate, request, file, line, and byte ceilings. Optional misses produce explicit partial context; authentication, repository identity, rate-limit, and transient failures retain M6/M4 classification. Source is ephemeral and is never logged, persisted, executed, or treated as instructions.
 
-M8 keeps application instructions structurally separate from hostile repository input, enables no model tools or URL access, and requests only caller-schema structured JSON. M9 now sends the minimum bounded M7 evidence across that configured provider boundary when AI and the worker are explicitly enabled. The engine maps diff coordinates deterministically, validates strict structured candidates again against changed paths and supplied lines, and never publishes or persists them. Independent input, schema, finding, output-token, timeout, and retry ceilings limit cost and availability impact. Tenant policy, consent, data-use disclosure, final M10 suppression, and M11 publication controls remain required before production review enablement.
+M8 keeps application instructions structurally separate from hostile repository input, enables no model tools or URL access, and requests only caller-schema structured JSON. M9 sends the minimum bounded M7 evidence across that configured provider boundary when AI and the worker are explicitly enabled. M10 adds no provider or external call: it applies conservative support gates, same-category duplicate resolution, stable ranking, and an initial three-candidate cap, while retaining aggregate suppression reasons only. These rules reduce obvious false positives but cannot prove semantic correctness. Tenant policy, consent, data-use disclosure, and M11 publication controls remain required before production review enablement.
 
 AI analysis can be wrong even after validation, GitHub permissions still carry impact, and software dependencies cannot be made risk-free. The product reduces these risks through bounded authority, high-confidence publication, human review, monitoring, and incident response.
 

@@ -49,6 +49,20 @@ class AiReviewEngineTest {
         assertThat(analysis.toString()).isEqualTo("ReviewAnalysis[findings=0, modelTier=BALANCED]");
     }
 
+    @Test void deterministicSuppressionMakesNoSecondProviderCall() {
+        ReviewContext context = context(changed(PATH, ChangedFileStatus.MODIFIED,
+                "@@ -1,1 +1,2 @@\n current\n+reservation.confirm();"), List.of());
+        FakeAiProvider provider = provider("{\"findings\":[]}");
+
+        ReviewAnalysis analysis = engine(provider).analyze(context);
+        ValidatedReview validated = new DeterministicFindingSuppressionEngine(
+                new FindingSuppressionProperties(85, ReviewSeverity.MEDIUM, 3))
+                .validate(analysis, context);
+
+        assertThat(validated.findings()).isEmpty();
+        assertThat(provider.calls()).isEqualTo(1);
+    }
+
     @ParameterizedTest
     @EnumSource(value = ReviewFindingCategory.class, names = {
             "CORRECTNESS", "SECURITY", "CONCURRENCY", "TRANSACTIONAL_INTEGRITY", "PERFORMANCE"})
@@ -204,6 +218,20 @@ class AiReviewEngineTest {
         FakeAiProvider provider = provider("{\"findings\":[]}");
         assertThat(engine(provider).analyze(context).findings()).isEmpty();
         assertThat(provider.lastRequest().input()).contains("NO_RELEVANT_FRAGMENT");
+    }
+
+    @Test void suppressionAddsNoSecondProviderCall() {
+        ReviewContext context = context(
+                changed(PATH, ChangedFileStatus.MODIFIED, "@@ -1 +1 @@\n+save()"), List.of());
+        FakeAiProvider provider = provider("{\"findings\":[]}");
+
+        ReviewAnalysis analysis = engine(provider).analyze(context);
+        ValidatedReview validated = new DeterministicFindingSuppressionEngine(
+                new FindingSuppressionProperties(85, ReviewSeverity.MEDIUM, 3))
+                .validate(analysis, context);
+
+        assertThat(validated.findings()).isEmpty();
+        assertThat(provider.calls()).isEqualTo(1);
     }
 
     private void assertInvalid(ReviewContext context, String output) {

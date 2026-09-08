@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. Milestone M9 produces bounded, evidence-checked AI candidate findings; final suppression and GitHub publishing are not implemented.
+> Project status: **pre-alpha**. Milestone M10 deterministically suppresses weak AI candidates; GitHub publishing is not implemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -33,7 +33,7 @@ The API and worker are logical components of the backend. PostgreSQL is the init
 - OpenAPI
 - OpenAI behind an internal provider abstraction
 
-The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App client, signed webhook ingestion, revision-specific jobs, bounded context retrieval, an OpenAI Responses API adapter behind an internal structured-generation boundary, and a provider-neutral candidate review engine. The frontend, final finding suppression, and publication remain uninitialized.
+The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App client, signed webhook ingestion, revision-specific jobs, bounded context retrieval, an OpenAI Responses API adapter behind an internal structured-generation boundary, a provider-neutral candidate review engine, and deterministic false-positive suppression. The frontend and GitHub publication remain uninitialized.
 
 ## Repository layout
 
@@ -86,6 +86,6 @@ After startup, `GET http://localhost:8080/actuator/health` is the operational en
 
 ## Current milestone
 
-M9 adds one provider-neutral review analysis call over the exact bounded M7 context. Application-owned instructions prioritize concrete correctness, security, concurrency, transaction, reliability, API-misuse, and significant performance failures; zero findings is a successful and preferred result when evidence is insufficient. Deterministic JSON serialization supplies line-numbered diff and auxiliary evidence, and strict schema plus post-response validation rejects unsupported paths, invented lines, malformed fields, and output flooding.
+M9 produces at most five bounded, evidence-checked candidate findings from one provider call. M10 then applies a second, provider-independent trust boundary: confidence and severity gates, changed-code and location support, concrete/actionable evidence checks, conservative severity sanity, same-category duplicate suppression, stable ranking, and a three-candidate publication ceiling.
 
-Findings are candidates only. M10 owns final deterministic suppression, ranking, and deduplication, and M11 owns GitHub publication. Source, prompts, and model output remain ephemeral and unlogged; no provider tools are enabled. A successful analysis currently terminates safely at `REVIEW_PUBLISHING_NOT_IMPLEMENTED` rather than claiming a completed review.
+The initial operator policy is confidence 85, minimum severity MEDIUM, and at most three publication candidates. Silence is better than a weak comment; zero accepted findings is a successful result. Suppression is deterministic, memory-only, makes no network or AI call, and exposes only aggregate reason counts. Suppression is not semantic proof. M11 owns GitHub publication, so successful M10 processing still stops safely at `REVIEW_PUBLISHING_NOT_IMPLEMENTED`.

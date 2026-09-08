@@ -106,6 +106,15 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 - Findings, source, prompts, schema bodies, and provider output remain in memory only and are absent from logs, errors, queue state, Actuator, and string representations. Safe metadata contains only provider/model, duration, attempt ceiling, numeric token usage, and finding count.
 - Retryable provider failures map to bounded retry codes; authentication, permission, unavailable-model, malformed-output, and other terminal failures map to bounded terminal codes. Successful analysis stops before publication and cannot mark a review completed.
 
+### Finding-suppression controls implemented in M10
+
+- Model output remains untrusted after M9. A provider-independent deterministic boundary requires the initial confidence 85 and MEDIUM severity policy, validates changed-code/location support, rejects obvious generic or insufficient evidence, and conservatively rejects inconsistent CRITICAL impact.
+- Line findings must intersect real added new-side evidence, except patch-unavailable files where exact HEAD coordinates must come from M7 changed-file context. Removed files cannot receive invented HEAD coordinates; their file-level findings require explicit deletion relevance. Previous rename paths remain invalid.
+- Same-category exact and strong normalized overlaps are resolved deterministically. Stable severity/confidence/location/ID ranking retains at most three publication candidates by default. Zero accepted findings is successful.
+- Suppression exposes only candidate/accepted/suppressed counts and controlled reason counts. It does not persist or log paths, finding bodies, source, model output, or suggested fixes.
+- Finding text, URLs, shell-like strings, HTML, secret-like strings, and paths remain inert. Suppression performs no AI, GitHub, network, URL, filesystem, database, code-execution, or tool call.
+- Suppression is an explainable support filter, not proof of semantic correctness. Model confidence is not authority and cannot bypass independent publication controls.
+
 ## Untrusted repository and model content
 
 - Treat diffs, source files, paths, comments, commit messages, metadata, generated files, encodings, and archives as malicious input.

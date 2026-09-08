@@ -7,6 +7,8 @@ import io.prreviewassistant.review.retrieval.PullRequestLoader;
 import io.prreviewassistant.review.context.ReviewContextBuildResult;
 import io.prreviewassistant.review.context.ReviewContextBuilder;
 import io.prreviewassistant.review.analysis.ReviewAnalysisException;
+import io.prreviewassistant.review.analysis.FindingSuppressionEngine;
+import io.prreviewassistant.review.analysis.ReviewAnalysis;
 import io.prreviewassistant.review.analysis.ReviewEngine;
 import io.prreviewassistant.ai.AiProviderErrorType;
 import io.prreviewassistant.ai.AiProviderException;
@@ -20,24 +22,28 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
     private final PullRequestLoader loader;
     private final ReviewContextBuilder contextBuilder;
     private final ReviewEngine reviewEngine;
+    private final FindingSuppressionEngine suppressionEngine;
 
     @Autowired
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
-            ObjectProvider<ReviewEngine> reviewEngineProvider) {
+            ObjectProvider<ReviewEngine> reviewEngineProvider,
+            FindingSuppressionEngine suppressionEngine) {
         this.loader = loader;
         this.contextBuilder = contextBuilder;
         this.reviewEngine = reviewEngineProvider.getIfAvailable();
+        this.suppressionEngine = suppressionEngine;
     }
 
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
-            ReviewEngine reviewEngine) {
+            ReviewEngine reviewEngine, FindingSuppressionEngine suppressionEngine) {
         this.loader = loader;
         this.contextBuilder = contextBuilder;
         this.reviewEngine = reviewEngine;
+        this.suppressionEngine = suppressionEngine;
     }
 
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder) {
-        this(loader, contextBuilder, (ReviewEngine) null);
+        this(loader, contextBuilder, (ReviewEngine) null, null);
     }
 
     @Override
@@ -69,12 +75,15 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
             return ReviewJobExecutionResult.terminal("REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED");
         }
         try {
-            reviewEngine.analyze(result.context());
+            ReviewAnalysis analysis = reviewEngine.analyze(result.context());
+            suppressionEngine.validate(analysis, result.context());
             return ReviewJobExecutionResult.terminal("REVIEW_PUBLISHING_NOT_IMPLEMENTED");
         } catch (AiProviderException exception) {
             return map(exception.errorType());
         } catch (ReviewAnalysisException exception) {
             return ReviewJobExecutionResult.terminal("AI_INVALID_OUTPUT");
+        } catch (IllegalArgumentException exception) {
+            return ReviewJobExecutionResult.terminal("FINDING_SUPPRESSION_INVALID");
         }
     }
 
