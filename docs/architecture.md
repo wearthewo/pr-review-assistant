@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M9, the Spring Boot/PostgreSQL foundation, GitHub App authentication, durable webhook/job lifecycle, bounded exact-revision context, structured AI transport, and candidate review analysis exist; final suppression and publication remain unimplemented.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M10, the Spring Boot/PostgreSQL foundation, GitHub App authentication, durable webhook/job lifecycle, bounded exact-revision context, structured AI transport, candidate review analysis, and deterministic finding suppression exist; publication remains unimplemented.
 
 ## System context
 
@@ -38,7 +38,7 @@ Stores durable product state and review jobs. For a new reviewable delivery, its
 
 ### Review worker
 
-Claims durable jobs in deterministic due/creation/ID order, commits the claim, then executes work outside a database transaction. Completion, retry, and failure use separate short ownership-checked transactions. The scheduler remains disabled by default. M9 invokes analysis only for a ready/partial exact-revision context when AI is enabled. Retryable provider classes retain M4 retry behavior; terminal classes use bounded codes. Successful analysis stops at publishing-not-implemented rather than falsely completing a review. Later external effects must remain retry-safe; exactly-once execution is not promised.
+Claims durable jobs in deterministic due/creation/ID order, commits the claim, then executes work outside a database transaction. Completion, retry, and failure use separate short ownership-checked transactions. The scheduler remains disabled by default. M9 invokes analysis only for a ready/partial exact-revision context when AI is enabled, then M10 deterministically suppresses its candidates without another provider call. Retryable provider classes retain M4 retry behavior; deterministic suppression has no retry class. Successful validation, including zero accepted findings, stops at publishing-not-implemented rather than falsely completing a review. Later external effects must remain retry-safe; exactly-once execution is not promised.
 
 ### GitHub integration
 
@@ -62,7 +62,9 @@ M9 owns review policy above that generic transport. It deterministically seriali
 
 ### Validation and ranking
 
-Validates structure and evidence, removes unsafe, duplicate, irrelevant, or low-confidence candidates, and ranks remaining findings under a bounded review budget. This boundary enforces the product principle that fewer high-confidence findings are preferable to noisy coverage.
+M10 is a provider-independent, in-memory trust boundary after M9. Its fixed gate order applies conservative confidence and severity policy, verifies changed-code/location support, rejects insufficient or generic evidence and inconsistent severity, resolves same-category exact/near duplicates, ranks deterministically, and limits the result to three publication candidates by default. It returns accepted findings plus aggregate suppression counts only; rejected content is not exposed or persisted.
+
+This boundary verifies support facts, not semantic correctness. It makes no AI, GitHub, network, filesystem, database, or tool call. M9 candidates and M10 accepted findings are deliberately distinct concepts. Zero accepted findings is successful.
 
 ### Review publisher
 
@@ -92,7 +94,7 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, a disabled-by-default job poller, and a disabled-by-default AI adapter/review engine. Database locks and claim tokens make ownership safe across processes. PostgreSQL stores webhook envelopes and immutable targets, but no credentials, fetched context, AI requests, AI outputs, analyses, or findings. Context and review data remain ephemeral. The frontend and deployment topology remain undecided.
+The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, a disabled-by-default job poller, a disabled-by-default AI adapter/review engine, and deterministic finding suppression. Database locks and claim tokens make ownership safe across processes. PostgreSQL stores webhook envelopes and immutable targets, but no credentials, fetched context, AI requests, AI outputs, analyses, findings, or suppression content. Context and review data remain ephemeral. The frontend and deployment topology remain undecided.
 
 ## Decision records
 

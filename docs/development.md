@@ -2,7 +2,7 @@
 
 ## Current state
 
-The repository is at Milestone M9. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL, Flyway, JPA validation, Actuator, Testcontainers, GitHub App authentication, secure webhook/job ingestion, a leased worker, bounded exact-revision context, provider-neutral structured AI transport, and candidate review analysis. Local infrastructure contains PostgreSQL only. There is no final finding suppression/ranking, review publication, tenant schema, frontend, OpenAPI specification, or CI/CD workflow.
+The repository is at Milestone M10. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL, Flyway, JPA validation, Actuator, Testcontainers, GitHub App authentication, secure webhook/job ingestion, a leased worker, bounded exact-revision context, provider-neutral structured AI transport, candidate review analysis, and deterministic finding suppression. Local infrastructure contains PostgreSQL only. There is no review publication, tenant schema, frontend, OpenAPI specification, or CI/CD workflow.
 
 ## Prerequisites
 
@@ -106,7 +106,7 @@ The endpoint returns `202` for both new and duplicate valid deliveries, `400` fo
 
 The production job-creation operation accepts only a validated `ReviewTarget`. M6 supplies its installation ID to the existing M2 token provider, resolves GitHub's mutable owner/name from `GET /repositories/{id}`, verifies that numeric identity, fetches the PR, and compares the returned head SHA before requesting files. `Link` only signals another page; the client increments its own bounded page number on the configured base URL, and redirects are disabled.
 
-Keep `REVIEW_WORKER_ENABLED=false` until tenant policy and publication controls are ready. If enabled, retrieval and analysis run outside the claim transaction. Rate limits, timeouts, and transient GitHub/AI failures return bounded retryable codes; stale revisions, inaccessible resources, malformed responses, large PRs, and terminal provider failures terminate. With AI disabled, context ends at `REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED`. With AI enabled, one M9 call is made and a successful candidate analysis—including zero findings—ends at `REVIEW_PUBLISHING_NOT_IMPLEMENTED`, never `COMPLETED`. Context, patches, prompts, outputs, and findings are never persisted.
+Keep `REVIEW_WORKER_ENABLED=false` until tenant policy and publication controls are ready. If enabled, retrieval and analysis run outside the claim transaction. Rate limits, timeouts, and transient GitHub/AI failures return bounded retryable codes; stale revisions, inaccessible resources, malformed responses, large PRs, and terminal provider failures terminate. With AI disabled, context ends at `REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED`. With AI enabled, one M9 call is made and M10 deterministically suppresses candidates without another provider call. A successful validated result—including zero accepted findings—ends at `REVIEW_PUBLISHING_NOT_IMPLEMENTED`, never `COMPLETED`. Context, patches, prompts, outputs, findings, and suppressed content are never persisted.
 
 ## AI provider configuration
 
@@ -121,6 +121,12 @@ Defaults bound requests to 120,000 instruction-plus-input characters, a 64 KiB s
 The serializer emits deterministic JSON with a clear untrusted-data marker, compact PR metadata, canonical changed paths, line-numbered unified diff evidence, deduplicated auxiliary fragments, omission reasons, and bounded budget metadata. It performs no additional GitHub call. Strict schema output is revalidated for count, enum, confidence, field size, exact changed path, and real HEAD/new-side location. Invalid semantic candidates are excluded without invented replacement data; unsafe output structure terminates with `AI_INVALID_OUTPUT`.
 
 Automated tests use `FakeAiProvider` and make no paid/network calls. Once publication exists, analysis and publishing should have a recoverable boundary so a publication-only retry does not pay for repeated AI generation. M9 deliberately does not introduce that persistence or job split.
+
+## Finding suppression configuration
+
+`REVIEW_SUPPRESSION_MINIMUM_CONFIDENCE=85`, `REVIEW_SUPPRESSION_MINIMUM_SEVERITY=MEDIUM`, and `REVIEW_SUPPRESSION_MAX_PUBLISHABLE_FINDINGS=3` define the initial conservative operator policy. Confidence is restricted to 0–100, severity is the controlled review enum, and the publication-candidate cap is restricted to 1–5. These values are not repository-controlled.
+
+The fixed deterministic pipeline assigns the first failed gate as the one aggregate suppression reason. Same-category textual overlap requires an overlapping location, at least four shared normalized tokens, and Jaccard similarity of at least 0.60; there are no embeddings or external libraries. Model confidence is an input to policy, not proof that a finding is correct. Do not tune these defaults without beta evidence.
 
 ## Troubleshooting and completion
 

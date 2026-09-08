@@ -41,6 +41,10 @@ review:
   analysis:
     max-findings: ${REVIEW_AI_MAX_FINDINGS:5}
     minimum-candidate-confidence: ${REVIEW_AI_MINIMUM_CANDIDATE_CONFIDENCE:70}
+  suppression:
+    minimum-confidence: ${REVIEW_SUPPRESSION_MINIMUM_CONFIDENCE:85}
+    minimum-severity: ${REVIEW_SUPPRESSION_MINIMUM_SEVERITY:MEDIUM}
+    max-publishable-findings: ${REVIEW_SUPPRESSION_MAX_PUBLISHABLE_FINDINGS:3}
   ai:
     enabled: ${REVIEW_AI_ENABLED:false}
     provider: ${AI_PROVIDER:openai}
