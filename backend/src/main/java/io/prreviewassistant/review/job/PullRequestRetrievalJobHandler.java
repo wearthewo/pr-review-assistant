@@ -15,6 +15,7 @@ import io.prreviewassistant.ai.AiProviderException;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import io.prreviewassistant.review.publication.PublicationHandoffService;
 
 @Component
 final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
@@ -23,23 +24,33 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
     private final ReviewContextBuilder contextBuilder;
     private final ReviewEngine reviewEngine;
     private final FindingSuppressionEngine suppressionEngine;
+    private final PublicationHandoffService publicationHandoff;
 
     @Autowired
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
             ObjectProvider<ReviewEngine> reviewEngineProvider,
-            FindingSuppressionEngine suppressionEngine) {
+            FindingSuppressionEngine suppressionEngine,
+            PublicationHandoffService publicationHandoff) {
         this.loader = loader;
         this.contextBuilder = contextBuilder;
         this.reviewEngine = reviewEngineProvider.getIfAvailable();
         this.suppressionEngine = suppressionEngine;
+        this.publicationHandoff = publicationHandoff;
     }
 
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
             ReviewEngine reviewEngine, FindingSuppressionEngine suppressionEngine) {
+        this(loader, contextBuilder, reviewEngine, suppressionEngine, null);
+    }
+
+    PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
+            ReviewEngine reviewEngine, FindingSuppressionEngine suppressionEngine,
+            PublicationHandoffService publicationHandoff) {
         this.loader = loader;
         this.contextBuilder = contextBuilder;
         this.reviewEngine = reviewEngine;
         this.suppressionEngine = suppressionEngine;
+        this.publicationHandoff = publicationHandoff;
     }
 
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder) {
@@ -51,10 +62,13 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
         if (job.reviewTarget() == null) {
             return ReviewJobExecutionResult.success();
         }
+        if (publicationHandoff != null && publicationHandoff.alreadyHandedOff(job.id())) {
+            return ReviewJobExecutionResult.success();
+        }
         try {
             PullRequestLoadResult result = loader.load(job.reviewTarget());
             return switch (result.outcome()) {
-                case READY -> handleContext(contextBuilder.build(result.snapshot()));
+                case READY -> handleContext(job, contextBuilder.build(result.snapshot()));
                 case STALE -> ReviewJobExecutionResult.terminal("STALE_PULL_REQUEST_REVISION");
                 case TOO_LARGE -> ReviewJobExecutionResult.terminal("PULL_REQUEST_TOO_LARGE");
             };
@@ -63,21 +77,28 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
         }
     }
 
-    private ReviewJobExecutionResult handleContext(ReviewContextBuildResult result) {
+    private ReviewJobExecutionResult handleContext(ClaimedReviewJob job, ReviewContextBuildResult result) {
         return switch (result.outcome()) {
-            case READY, PARTIAL -> analyze(result);
+            case READY, PARTIAL -> analyze(job, result);
             case UNAVAILABLE -> ReviewJobExecutionResult.terminal("REVIEW_CONTEXT_UNAVAILABLE");
         };
     }
 
-    private ReviewJobExecutionResult analyze(ReviewContextBuildResult result) {
+    private ReviewJobExecutionResult analyze(ClaimedReviewJob job, ReviewContextBuildResult result) {
         if (reviewEngine == null) {
             return ReviewJobExecutionResult.terminal("REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED");
         }
         try {
             ReviewAnalysis analysis = reviewEngine.analyze(result.context());
-            suppressionEngine.validate(analysis, result.context());
-            return ReviewJobExecutionResult.terminal("REVIEW_PUBLISHING_NOT_IMPLEMENTED");
+            var validated = suppressionEngine.validate(analysis, result.context());
+            if (validated.findings().isEmpty()) {
+                return ReviewJobExecutionResult.success();
+            }
+            if (publicationHandoff == null) {
+                return ReviewJobExecutionResult.terminal("REVIEW_PUBLISHING_NOT_IMPLEMENTED");
+            }
+            publicationHandoff.handoff(job.id(), validated, result.context().pullRequest());
+            return ReviewJobExecutionResult.success();
         } catch (AiProviderException exception) {
             return map(exception.errorType());
         } catch (ReviewAnalysisException exception) {

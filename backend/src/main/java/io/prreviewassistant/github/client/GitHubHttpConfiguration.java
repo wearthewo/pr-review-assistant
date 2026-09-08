@@ -80,4 +80,9 @@ class GitHubHttpConfiguration {
             InstallationTokenProvider tokenProvider) {
         return new GitHubApiClient(gitHubRestClient, tokenProvider);
     }
+
+    @Bean
+    GitHubReviewClient gitHubReviewClient(RestClient gitHubRestClient, InstallationTokenProvider tokenProvider) {
+        return new GitHubReviewClient(gitHubRestClient, tokenProvider);
+    }
 }

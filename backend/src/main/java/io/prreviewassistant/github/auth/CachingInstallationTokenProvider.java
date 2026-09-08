@@ -40,6 +40,13 @@ public final class CachingInstallationTokenProvider implements InstallationToken
         }
 
         try {
+            // A prior refresher can populate the cache between our first cache read and
+            // acquiring refresh ownership. Recheck here to avoid a sequential duplicate request.
+            cached = cache.get(installationId);
+            if (isSufficientlyValid(cached)) {
+                pending.complete(cached);
+                return cached;
+            }
             InstallationAccessToken refreshed = requester.request(installationId);
             if (!refreshed.expiresAt().isAfter(clock.instant())) {
                 throw GitHubException.malformedResponse();

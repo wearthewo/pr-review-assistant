@@ -45,6 +45,18 @@ review:
     minimum-confidence: ${REVIEW_SUPPRESSION_MINIMUM_CONFIDENCE:85}
     minimum-severity: ${REVIEW_SUPPRESSION_MINIMUM_SEVERITY:MEDIUM}
     max-publishable-findings: ${REVIEW_SUPPRESSION_MAX_PUBLISHABLE_FINDINGS:3}
+  publication:
+    enabled: ${REVIEW_PUBLICATION_ENABLED:false}
+    max-summary-chars: ${REVIEW_PUBLICATION_MAX_SUMMARY_CHARS:6000}
+    max-comment-chars: ${REVIEW_PUBLICATION_MAX_COMMENT_CHARS:2000}
+    max-payload-chars: ${REVIEW_PUBLICATION_MAX_PAYLOAD_CHARS:20000}
+    reconciliation-max-pages: ${REVIEW_PUBLICATION_RECONCILIATION_MAX_PAGES:10}
+    max-attempts: ${REVIEW_PUBLICATION_MAX_ATTEMPTS:3}
+    retry-base-delay: ${REVIEW_PUBLICATION_RETRY_BASE_DELAY:10s}
+    retry-max-delay: ${REVIEW_PUBLICATION_RETRY_MAX_DELAY:5m}
+    poll-interval: ${REVIEW_PUBLICATION_POLL_INTERVAL:5s}
+    batch-size: ${REVIEW_PUBLICATION_BATCH_SIZE:10}
+    lease-duration: ${REVIEW_PUBLICATION_LEASE_DURATION:2m}
   ai:
     enabled: ${REVIEW_AI_ENABLED:false}
     provider: ${AI_PROVIDER:openai}
