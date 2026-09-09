@@ -6,12 +6,15 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.prreviewassistant.ai.StructuredOutputSchema;
 
+import java.util.Comparator;
+import java.util.Set;
 import java.util.Arrays;
 
 final class ReviewFindingSchema {
     private ReviewFindingSchema() { }
 
-    static StructuredOutputSchema create(ObjectMapper mapper, int maxFindings) {
+    static StructuredOutputSchema create(ObjectMapper mapper, int maxFindings,
+            Set<ReviewFindingCategory> enabledCategories) {
         ObjectNode root = object(mapper);
         ObjectNode properties = root.putObject("properties");
         ObjectNode findings = properties.putObject("findings");
@@ -20,7 +23,8 @@ final class ReviewFindingSchema {
         ObjectNode item = object(mapper);
         findings.set("items", item);
         ObjectNode fields = item.putObject("properties");
-        enumString(fields.putObject("category"), Arrays.stream(ReviewFindingCategory.values()).map(Enum::name).toArray(String[]::new));
+        enumString(fields.putObject("category"), enabledCategories.stream()
+                .sorted(Comparator.comparingInt(Enum::ordinal)).map(Enum::name).toArray(String[]::new));
         enumString(fields.putObject("severity"), Arrays.stream(ReviewSeverity.values()).map(Enum::name).toArray(String[]::new));
         integer(fields.putObject("confidence"), 0, 100);
         string(fields.putObject("path"), 1, 4096);

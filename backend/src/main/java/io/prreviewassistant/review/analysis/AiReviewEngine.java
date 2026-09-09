@@ -25,6 +25,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.EnumSet;
 
 public final class AiReviewEngine implements ReviewEngine {
     private static final int MAX_LOCATION_SPAN = 200;
@@ -38,7 +39,6 @@ public final class AiReviewEngine implements ReviewEngine {
     private final ReviewContextSerializer serializer;
     private final ReviewAnalysisProperties properties;
     private final AiGenerationProfile generationProfile;
-    private final io.prreviewassistant.ai.StructuredOutputSchema schema;
     private final UnifiedDiffLineMapper lineMapper = new UnifiedDiffLineMapper();
 
     public AiReviewEngine(AiProvider provider, ObjectMapper objectMapper,
@@ -49,19 +49,28 @@ public final class AiReviewEngine implements ReviewEngine {
         this.serializer = serializer;
         this.properties = properties;
         this.generationProfile = generationProfile;
-        this.schema = ReviewFindingSchema.create(objectMapper, properties.maxFindings());
     }
 
     @Override
     public ReviewAnalysis analyze(ReviewContext context) {
+        return analyze(context, EnumSet.allOf(ReviewFindingCategory.class));
+    }
+
+    @Override
+    public ReviewAnalysis analyze(ReviewContext context, Set<ReviewFindingCategory> enabledCategories) {
+        if (enabledCategories == null || enabledCategories.isEmpty()) {
+            throw new IllegalArgumentException("at least one enabled category is required for AI analysis");
+        }
+        Set<ReviewFindingCategory> allowedCategories = Set.copyOf(enabledCategories);
         String input = serializer.serialize(context);
+        var schema = ReviewFindingSchema.create(objectMapper, properties.maxFindings(), allowedCategories);
         StructuredAiRequest request = new StructuredAiRequest(
-                ReviewInstructions.TEXT + "\nMinimum candidate confidence: "
+                ReviewInstructions.forCategories(allowedCategories) + "\nMinimum candidate confidence: "
                         + properties.minimumCandidateConfidence() + ". Maximum findings: "
                         + properties.maxFindings() + ".",
                 input, schema, generationProfile);
         StructuredAiResponse response = provider.generateStructured(request);
-        List<ReviewFinding> findings = parseAndValidate(response.structuredOutput(), context);
+        List<ReviewFinding> findings = parseAndValidate(response.structuredOutput(), context, allowedCategories);
         var execution = response.executionMetadata();
         ReviewAnalysisMetadata metadata = new ReviewAnalysisMetadata(
                 execution.provider(), execution.model(), generationProfile.modelTier(), response.usage(),
@@ -69,7 +78,8 @@ public final class AiReviewEngine implements ReviewEngine {
         return new ReviewAnalysis(context.target(), findings, metadata);
     }
 
-    private List<ReviewFinding> parseAndValidate(String output, ReviewContext context) {
+    private List<ReviewFinding> parseAndValidate(String output, ReviewContext context,
+            Set<ReviewFindingCategory> enabledCategories) {
         try {
             JsonNode root = objectMapper.readTree(output);
             requireExactObject(root, ROOT_FIELDS);
@@ -93,6 +103,9 @@ public final class AiReviewEngine implements ReviewEngine {
             Set<Candidate> seen = new HashSet<>();
             for (JsonNode node : findingsNode) {
                 Candidate candidate = parseCandidate(node);
+                if (!enabledCategories.contains(candidate.category())) {
+                    continue;
+                }
                 if (!seen.add(candidate) || candidate.confidence() < properties.minimumCandidateConfidence()) {
                     continue;
                 }

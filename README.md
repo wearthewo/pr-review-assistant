@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. Milestone M11 adds disabled-by-default, durable and retry-safe GitHub review publication.
+> Project status: **pre-alpha**. Milestone M12 adds safe repository-owned review configuration at the exact reviewed revision.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -33,7 +33,7 @@ The API and worker are logical components of the backend. PostgreSQL is the init
 - OpenAPI
 - OpenAI behind an internal provider abstraction
 
-The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App client, signed webhook ingestion, revision-specific jobs, bounded context retrieval, an OpenAI Responses API adapter behind an internal structured-generation boundary, deterministic false-positive suppression, and durable GitHub review publication. The frontend remains uninitialized.
+The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App client, signed webhook ingestion, revision-specific jobs, bounded context retrieval, safe exact-revision repository configuration, an OpenAI Responses API adapter behind an internal structured-generation boundary, deterministic false-positive suppression, and durable GitHub review publication. The frontend remains uninitialized.
 
 ## Repository layout
 
@@ -91,3 +91,26 @@ M9 produces at most five bounded, evidence-checked candidate findings from one p
 The initial operator policy is confidence 85, minimum severity MEDIUM, and at most three publication candidates. Silence is better than a weak comment; zero accepted findings completes without a GitHub write.
 
 M11 renders accepted findings into one `COMMENT` review tied to the exact head SHA. It atomically stores a versioned, bounded publication payload and a separate PostgreSQL publication job before analysis completes. Publication retries never invoke retrieval, context building, suppression, or AI. An application-owned hidden marker and an `AMBIGUOUS` state reconcile uncertain POST outcomes before another write, preventing duplicate reviews. Publishing is disabled by default and requires the GitHub App `Pull requests: write` repository permission.
+
+## Repository review configuration
+
+M12 optionally reads one fixed `.reviewbot.yml` file from the exact pull-request head SHA. Missing or invalid configuration uses safe defaults: balanced mode, no ignore patterns, and all defect categories enabled. The only accepted version-1 controls are `review.mode`, bounded ignore globs, and booleans for the existing categories. Raw YAML is never sent to AI, logged, persisted, or interpreted as instructions.
+
+```yaml
+version: 1
+review:
+  mode: balanced
+ignore:
+  - "**/generated/**"
+  - "**/*.lock"
+categories:
+  correctness: true
+  security: true
+  concurrency: true
+  transactional_integrity: true
+  reliability: true
+  api_misuse: true
+  performance: false
+```
+
+`fast`, `balanced`, and `deep` select application-owned profiles under operator hard ceilings; they cannot select a model or weaken suppression. Ignored files are removed before context discovery and AI. The config file excludes itself. If every file is ignored or every category is disabled, the job completes without AI or publication. Publication retries use the already persisted output and never reread configuration.

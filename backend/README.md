@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, a durable worker, bounded exact-revision context retrieval, a disabled-by-default structured AI provider boundary, candidate review analysis, deterministic false-positive suppression, and durable GitHub review publication. It contains no tenant persistence or arbitrary repository traversal.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, a durable worker, bounded exact-revision context retrieval, safe repository configuration, a disabled-by-default structured AI provider boundary, candidate review analysis, deterministic false-positive suppression, and durable GitHub review publication. It contains no tenant persistence or arbitrary repository traversal.
 
 ## Requirements
 
@@ -92,6 +92,14 @@ M7 selects minimum sufficient context from M6 patches. It fetches a changed file
 Source uses `GET /repos/{owner}/{repo}/contents/{path}?ref={immutable_sha}` with M2 installation authentication. HEAD is normal and BASE is explicit for deleted files. Download URLs, redirects, repository cloning, filesystem paths, branch names, and recursive trees are never used. UTF-8 text is retained whole when it fits. A larger file is retained only as an explicitly incomplete window around one uniquely located declaration anchor; without that evidence it is omitted as `NO_RELEVANT_FRAGMENT`. Binary/NUL, invalid UTF-8, missing, and oversized optional context also become omissions. Relevant omission is preferable to irrelevant inclusion because arbitrary context has negative request, token, and distraction cost.
 
 Defaults are 12 retained files, 128 KiB per file, 512 KiB total, 200 retained lines, 100 candidates, and 20 GitHub requests. `REVIEW_CONTEXT_*` variables configure bounded ceilings. These are source-byte limits, not model-token limits. More context is not automatically better context. M7 uses deterministic heuristics and does not invoke AI.
+
+## Repository configuration
+
+For each new analysis job, M12 makes at most one authenticated contents request for `.reviewbot.yml` with `ref` equal to the immutable reviewed head SHA. `REPOSITORY_CONFIG_MAX_SIZE` defaults to `32KB` and cannot exceed the 64 KiB application hard ceiling. Content must be NUL-free UTF-8 and strict version-1 YAML. The safe parser rejects duplicate keys, custom tags, aliases, unknown fields, wrong scalar types, and excessive nesting. A missing file uses defaults. Invalid, oversized, unsupported-version, or unsupported-encoding content also uses defaults with a safe status; authentication, permission, rate-limit, and transient GitHub failures retain the normal job classification.
+
+The supported options are the canonical example in the root README. Ignore matching supports only `/`-separated literal segments, `*`, `**`, and `?`; it permits at most 50 patterns, 256 characters each, and 4,096 characters total. It performs no filesystem resolution. `FAST` halves context file, byte, candidate, and request ceilings. `BALANCED` preserves the current configured ceilings. `DEEP` currently uses those same ceilings—never more—until a separate operator envelope justifies additional context. Every mode still permits at most one AI call.
+
+Filtering happens before M7 candidate discovery and M9 serialization. The application-generated M9 instructions and JSON Schema contain only enabled categories; disabled categories are also rejected deterministically from returned candidates. All-disabled, all-ignored, config-only, or otherwise empty reviews skip AI and publication successfully. Raw configuration and pattern values are not logged, persisted, added to errors, or included in the M11 payload. M11 retries therefore never fetch configuration or repeat analysis.
 
 ## AI provider transport
 

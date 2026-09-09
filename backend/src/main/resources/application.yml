@@ -38,6 +38,8 @@ github:
     max-body-size: ${GITHUB_WEBHOOK_MAX_BODY_SIZE:1MB}
 
 review:
+  repository-config:
+    max-size: ${REPOSITORY_CONFIG_MAX_SIZE:32KB}
   analysis:
     max-findings: ${REVIEW_AI_MAX_FINDINGS:5}
     minimum-candidate-confidence: ${REVIEW_AI_MINIMUM_CANDIDATE_CONFIDENCE:70}
