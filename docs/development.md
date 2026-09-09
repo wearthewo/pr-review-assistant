@@ -2,7 +2,7 @@
 
 ## Current state
 
-The repository is at Milestone M11. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL, Flyway, JPA validation, Actuator, Testcontainers, GitHub App authentication, secure webhook/job ingestion, leased analysis and publication workers, bounded exact-revision context, provider-neutral structured AI transport, deterministic suppression, and durable GitHub review publication. Local infrastructure contains PostgreSQL only. There is no tenant schema, frontend, OpenAPI specification, or CI/CD workflow.
+The repository is at Milestone M12. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL, Flyway, JPA validation, Actuator, Testcontainers, GitHub App authentication, secure webhook/job ingestion, leased analysis and publication workers, bounded exact-revision context, safe repository configuration, provider-neutral structured AI transport, deterministic suppression, and durable GitHub review publication. Local infrastructure contains PostgreSQL only. There is no tenant schema, frontend, OpenAPI specification, or CI/CD workflow.
 
 ## Prerequisites
 
@@ -64,6 +64,16 @@ On Windows, use `.\mvnw.cmd clean verify`. The test suite starts a pinned Postgr
 Repository context is controlled by `REVIEW_CONTEXT_ENABLED`, `REVIEW_CONTEXT_MAX_FILES`, `REVIEW_CONTEXT_MAX_FILE_BYTES`, `REVIEW_CONTEXT_MAX_TOTAL_BYTES`, `REVIEW_CONTEXT_MAX_CHANGED_FILE_BYTES`, `REVIEW_CONTEXT_MAX_LINES_PER_FILE`, `REVIEW_CONTEXT_MAX_CANDIDATES`, and `REVIEW_CONTEXT_MAX_API_REQUESTS`. These are source-byte and request limits, not model-token limits. M8 records provider-reported token usage and M9 propagates it without calculating prices.
 
 Common configuration is in `backend/src/main/resources/application.yml`. The local profile in `application-local.yml` imports the ignored root `.env` file. Non-local environments inject `DB_JDBC_URL`, `DB_USERNAME`, and `DB_PASSWORD` directly. Required values have no application defaults, so missing database configuration fails startup instead of selecting an embedded database. Secrets must never be committed, logged, exposed to the frontend, or passed to AI models.
+
+### Repository-owned review policy
+
+The only repository configuration filename is `.reviewbot.yml`. It is fetched through the existing installation-token client from the exact target head SHA—not a branch, default branch, local checkout, URL, or included file. `REPOSITORY_CONFIG_MAX_SIZE` defaults to `32KB` and is constrained to 64 KiB or less. Operators can lower that ceiling but repositories cannot raise it.
+
+The canonical version-1 schema and example are documented in the root README. Keys are lowercase and strict: `version`, `review.mode`, `ignore`, and the seven existing `categories` booleans. YAML booleans must be booleans; enum values are exactly `fast`, `balanced`, or `deep`. Unknown keys, duplicate keys, custom tags, aliases, malformed/empty YAML, wrong types, unknown categories, or unsupported versions never become partially trusted policy. Missing and invalid configuration use centralized balanced/all-enabled defaults. Existing GitHub authentication, access, rate-limit, and transient job classifications continue to propagate.
+
+Ignore syntax is a deliberately small logical-path matcher: literals, `*`, `**`, and `?`, using `/` only. Blank, absolute-like, control-bearing, backslash, empty-segment, dot-segment, and malformed `**` patterns are rejected. Limits are 50 patterns, 256 characters per pattern, and 4,096 total pattern characters. Matching does not use filesystem paths, regex translation, shell commands, network access, or repository traversal.
+
+`FAST` uses half the configured M7 file/byte/candidate/request ceilings; `BALANCED` preserves them; `DEEP` currently equals those operator ceilings rather than increasing cost. All modes retain the same validation, suppression, one-call maximum, model, output cap, and publication cap. If all categories are false or filtering leaves no reviewable files, processing succeeds without an AI call or publication. Once M11 handoff exists, publication retries do not load this file.
 
 GitHub App authentication additionally requires `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY_PATH`. `GITHUB_API_BASE_URL` defaults to GitHub's public API and is overridable for tests or compatible enterprise deployments. Installation ID is not global configuration; each internal operation supplies it because one App serves many installations.
 

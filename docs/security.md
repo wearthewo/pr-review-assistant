@@ -89,6 +89,17 @@ Every source byte, import, filename, comment, and URL remains hostile data. Cont
 
 Large source is never represented by an arbitrary leading fragment. Only a uniquely located controlled declaration can anchor an incomplete window with accurate line bounds; ambiguous or absent anchors produce `NO_RELEVANT_FRAGMENT`.
 
+### Repository configuration controls implemented in M12
+
+- `.reviewbot.yml` is fetched once through the existing installation-scoped boundary at the immutable reviewed HEAD SHA. No branch/default-branch/local-file/remote-include lookup is permitted.
+- Repository configuration is hostile data, never application instructions. Raw YAML, comments, ignore values, and unknown values are not logged, persisted, placed in exceptions, sent to AI, or exposed through Actuator.
+- The file defaults to a 32 KiB ceiling with a 64 KiB hard maximum and must be NUL-free UTF-8. Safe YAML construction rejects duplicate keys, aliases, custom tags, excessive nesting, unknown fields, unsupported versions, and wrong scalar types.
+- Missing, invalid, oversized, or unsupported content produces centralized balanced/all-enabled defaults plus a safe status. Authentication, permission, rate-limit, and transient GitHub failures are not disguised as missing configuration.
+- Ignore matching supports only bounded logical `/` repository paths and the application-owned `*`, `**`, and `?` subset. It performs no regex evaluation, filesystem resolution, URL access, imports/includes, shell work, or code execution.
+- Only fixed review modes and existing category booleans are accepted. Modes remain under M7 hard ceilings and all preserve one AI call maximum and M10 trust policy. Enabled categories constrain trusted instructions and schema before AI; repositories cannot select models, provider settings, confidence, output limits, or publication policy.
+- The control file and ignored changed/auxiliary files are removed before context discovery and serialization. All-disabled, all-ignored, and config-only work completes with no AI or GitHub publication.
+- Publication payloads contain no configuration. Once handoff commits, M11 retries neither reread configuration nor repeat analysis.
+
 ### AI transport controls implemented in M8
 
 - AI is disabled by default. Enabling OpenAI requires a runtime API key; the key is redacted by configuration objects and never logged, persisted, exposed through Actuator, or copied into errors.

@@ -3,17 +3,23 @@ package io.prreviewassistant.review.context;
 import java.nio.*; import java.nio.charset.*; import java.util.*;
 import io.prreviewassistant.github.auth.*; import io.prreviewassistant.github.client.*;
 import io.prreviewassistant.review.retrieval.*; import org.springframework.stereotype.Service;
+import io.prreviewassistant.review.config.*;
 
 @Service
-public final class ReviewContextBuilder {
+    public final class ReviewContextBuilder {
     private final GitHubApiClient client; private final ReviewContextProperties properties;
     private final ContextCandidateSelector selector=new ContextCandidateSelector();
     public ReviewContextBuilder(GitHubApiClient client,ReviewContextProperties properties){this.client=client;this.properties=properties;}
     public ReviewContextBuildResult build(PullRequestSnapshot snapshot){
+        return build(snapshot, EffectiveRepositoryReviewConfig.defaults());
+    }
+    public ReviewContextBuildResult build(PullRequestSnapshot snapshot, EffectiveRepositoryReviewConfig config){
         if(!properties.enabled())return ReviewContextBuildResult.unavailable(ContextOmissionReason.DISABLED);
-        List<ContextCandidate> candidates=selector.select(snapshot,properties.maxCandidates());
+        ReviewExecutionProfile profile=ReviewExecutionProfile.forMode(config.mode(),properties);
+        List<ContextCandidate> candidates=selector.select(snapshot,profile.maxCandidates()).stream()
+                .filter(candidate -> !config.ignores(candidate.path())).toList();
         if(candidates.isEmpty())return result(snapshot,List.of(),List.of(),new ContextBudgetUsage(0,0,0,0,0,0,false));
-        ContextBudget budget=new ContextBudget(candidates.size(),properties);
+        ContextBudget budget=new ContextBudget(candidates.size(),profile);
         List<ContextFile> files=new ArrayList<>();List<ContextOmission> omissions=new ArrayList<>();
         budget.requested();
         GitHubRepositoryMetadata repo=client.getRepository(snapshot.installationId(),snapshot.repositoryId(),PullRequestLoader.MAX_METADATA_RESPONSE_BYTES);

@@ -1,5 +1,7 @@
 package io.prreviewassistant.review.context;
 
+import io.prreviewassistant.review.config.ReviewExecutionProfile;
+
 final class ContextBudget {
     private final int candidates;
     private final int maxFiles;
@@ -12,11 +14,11 @@ final class ContextBudget {
     private int requests;
     private boolean exhausted;
 
-    ContextBudget(int candidates, ReviewContextProperties properties) {
+    ContextBudget(int candidates, ReviewExecutionProfile profile) {
         this.candidates = candidates;
-        this.maxFiles = properties.maxFiles();
-        this.maxBytes = properties.maxTotalBytes();
-        this.maxRequests = properties.maxApiRequests();
+        this.maxFiles = profile.maxFiles();
+        this.maxBytes = profile.maxTotalBytes();
+        this.maxRequests = profile.maxApiRequests();
     }
 
     boolean canFetch() {

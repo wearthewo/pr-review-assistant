@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M11, the Spring Boot/PostgreSQL foundation, GitHub App authentication, durable webhook/job lifecycle, bounded exact-revision context, structured AI transport, candidate review analysis, deterministic finding suppression, and durable GitHub review publication exist.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M12, the Spring Boot/PostgreSQL foundation, GitHub App authentication, durable webhook/job lifecycle, bounded exact-revision context, safe repository configuration, structured AI transport, candidate review analysis, deterministic finding suppression, and durable GitHub review publication exist.
 
 ## System context
 
@@ -50,6 +50,12 @@ Consumes only an exact M6 snapshot, discovers bounded candidates from changed pa
 
 Whole files are retained only when they fit. Larger content requires a unique deterministic declaration anchor and produces an incomplete window with real line provenance. Without an anchor, the file is omitted; arbitrary leading fragments have negative product value and are forbidden.
 
+### Repository configuration boundary
+
+Loads the single canonical `.reviewbot.yml` path once, after authenticated repository routing is resolved and before context selection, using the exact reviewed HEAD SHA. It converts bounded, NUL-free UTF-8 through safe strict YAML parsing into an immutable effective policy. Raw YAML never crosses this boundary. Missing or invalid content produces centralized defaults and a safe status; GitHub authentication, authorization, throttling, and transient failures keep their existing job semantics.
+
+The policy can choose only a predefined review mode, bounded deterministic ignore globs, and enablement flags for existing finding categories. Ignore policy removes source before context discovery and AI serialization. Category policy constrains trusted application-generated instructions and schema before the provider call. Repository choices remain subordinate to operator ceilings and cannot supply prompts, schemas, model/provider choices, confidence thresholds, publication limits, URLs, includes, or executable behavior. No configuration state is persisted. M11 publication retries consume their durable payload and never re-enter this boundary.
+
 ### Deterministic analysis
 
 Runs predictable, testable rules over normalized review inputs and returns structured candidate findings with evidence. It has no dependency on a model provider and must be reproducible for the same inputs and rule version.
@@ -96,7 +102,7 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, disabled-by-default job pollers, a disabled-by-default AI adapter/review engine, deterministic finding suppression, and durable review publication. Database locks and claim tokens make ownership safe across processes. PostgreSQL stores webhook envelopes, immutable targets, and only the sanitized accepted user-facing publication payload plus routing metadata. It stores no credentials, fetched context, prompts, raw AI responses, rejected findings, patches, or suppression content. The frontend and deployment topology remain undecided.
+The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, disabled-by-default job pollers, exact-revision repository configuration, a disabled-by-default AI adapter/review engine, deterministic finding suppression, and durable review publication. Database locks and claim tokens make ownership safe across processes. PostgreSQL stores webhook envelopes, immutable targets, and only the sanitized accepted user-facing publication payload plus routing metadata. It stores no credentials, fetched context, repository configuration, prompts, raw AI responses, rejected findings, patches, or suppression content. The frontend and deployment topology remain undecided.
 
 ## Decision records
 

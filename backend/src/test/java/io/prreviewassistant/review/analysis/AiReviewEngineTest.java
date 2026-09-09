@@ -234,6 +234,28 @@ class AiReviewEngineTest {
         assertThat(provider.calls()).isEqualTo(1);
     }
 
+    @Test void enabledCategoriesConstrainTrustedInstructionsSchemaAndAcceptedFindings() {
+        String response = output(
+                finding("CORRECTNESS", "HIGH", 90, PATH, null, null,
+                        "Correctness", "e", "i", "x", null),
+                finding("SECURITY", "HIGH", 90, PATH, null, null,
+                        "Security", "e", "i", "x", null));
+        FakeAiProvider provider = provider(response);
+        ReviewAnalysis analysis = engine(provider).analyze(
+                context(changed(PATH, ChangedFileStatus.MODIFIED, "@@ -1 +1 @@\n+x"), List.of()),
+                java.util.EnumSet.of(ReviewFindingCategory.CORRECTNESS));
+
+        assertThat(analysis.findings()).extracting(ReviewFinding::category)
+                .containsExactly(ReviewFindingCategory.CORRECTNESS);
+        assertThat(provider.lastRequest().instructions())
+                .contains("only enabled finding categories are: CORRECTNESS")
+                .doesNotContain("CORRECTNESS, SECURITY");
+        assertThat(provider.lastRequest().outputSchema().jsonSchema())
+                .contains("\"enum\":[\"CORRECTNESS\"]")
+                .doesNotContain("\"SECURITY\"");
+        assertThat(provider.calls()).isEqualTo(1);
+    }
+
     private void assertInvalid(ReviewContext context, String output) {
         assertThatThrownBy(() -> engine(provider(output)).analyze(context))
                 .isInstanceOf(ReviewAnalysisException.class)

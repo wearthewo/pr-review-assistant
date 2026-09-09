@@ -6,6 +6,8 @@ Testing must provide confidence in behavior, boundaries, tenant isolation, idemp
 
 M1 establishes the backend foundation tests. M2 adds authentication and cache tests; M3 covers exact-byte webhooks; M4 covers leased queue concurrency; M5 covers atomic revision jobs; M6 covers bounded PR retrieval. M7 adds exact-SHA context contracts and deterministic bounded selection. M8 adds offline provider-contract, SDK mapping, configuration, usage, limits, retry classification, redaction, and concurrency tests with a deterministic fake. M9 adds fake-provider review tests, strict review-schema/domain validation, deterministic serialization, unified-diff line mapping, prompt-injection regression cases, empty-review success, and no-false-completion worker coverage. M10 adds pure policy tests for confidence/severity boundaries, changed-line and file-level support, generic/actionable evidence, severity sanity, deterministic duplicate/overlap resolution, caps, aggregate accounting, immutability, inert malicious text, zero-result success, and worker handoff without a second AI call. M11 adds publication-key, versioned-codec, rendering, GitHub contract, ambiguous reconciliation, PostgreSQL handoff/lease/idempotency, and no-repeat-AI tests. The remaining categories below become requirements as corresponding behavior is implemented.
 
+M12 adds strict YAML, size, encoding, duplicate-key, tag, and alias tests; bounded logical glob tests; exact-SHA content-fetch contracts; predefined mode-ceiling tests; category-constrained schema tests; and workflow tests proving early ignore and zero AI/publication for empty policy results.
+
 ## Test layers
 
 ### Unit tests
@@ -53,6 +55,8 @@ Exercise the smallest complete deployed-like flow: a signed synthetic webhook en
 Every fixed vulnerability receives a test at the lowest effective level plus boundary coverage when needed. Maintain explicit coverage for webhook forgery and replay, cross-tenant identifier substitution, prompt-injection payloads, malicious paths and encodings, log/response redaction, authorization failures, oversized inputs, rate and retry bounds, malformed model output, and unsafe rendering. CI handling of forked contributions must be tested or policy-checked without exposing secrets.
 
 M11 security regressions cover marker forgery, hostile Markdown and mentions, payload/string redaction, secret-bearing GitHub errors, ambiguous write reconciliation, and the zero-finding no-write rule.
+
+M12 security regressions treat configuration itself as hostile: unknown instruction/model/URL/secret-shaped fields fall back without content exposure; duplicate keys, custom tags, invalid UTF-8, NUL, oversized input, and alias expansion are rejected. Tests prove matching uses only bounded repository-path strings, category restrictions occur before AI, config-only/all-ignored/all-disabled work makes no provider or publication call, exact HEAD SHA is used once, and publication retries never reload config. All tests remain offline and deterministic.
 
 ## Test data and doubles
 

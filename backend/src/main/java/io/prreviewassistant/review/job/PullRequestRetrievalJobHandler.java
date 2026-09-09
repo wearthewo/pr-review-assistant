@@ -16,6 +16,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import io.prreviewassistant.review.publication.PublicationHandoffService;
+import io.prreviewassistant.review.config.EffectiveRepositoryReviewConfig;
+import io.prreviewassistant.review.config.RepositoryConfigLoader;
 
 @Component
 final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
@@ -25,17 +27,20 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
     private final ReviewEngine reviewEngine;
     private final FindingSuppressionEngine suppressionEngine;
     private final PublicationHandoffService publicationHandoff;
+    private final RepositoryConfigLoader repositoryConfigLoader;
 
     @Autowired
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
             ObjectProvider<ReviewEngine> reviewEngineProvider,
             FindingSuppressionEngine suppressionEngine,
-            PublicationHandoffService publicationHandoff) {
+            PublicationHandoffService publicationHandoff,
+            RepositoryConfigLoader repositoryConfigLoader) {
         this.loader = loader;
         this.contextBuilder = contextBuilder;
         this.reviewEngine = reviewEngineProvider.getIfAvailable();
         this.suppressionEngine = suppressionEngine;
         this.publicationHandoff = publicationHandoff;
+        this.repositoryConfigLoader = repositoryConfigLoader;
     }
 
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
@@ -46,11 +51,18 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
             ReviewEngine reviewEngine, FindingSuppressionEngine suppressionEngine,
             PublicationHandoffService publicationHandoff) {
+        this(loader, contextBuilder, reviewEngine, suppressionEngine, publicationHandoff, null);
+    }
+
+    PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
+            ReviewEngine reviewEngine, FindingSuppressionEngine suppressionEngine,
+            PublicationHandoffService publicationHandoff, RepositoryConfigLoader repositoryConfigLoader) {
         this.loader = loader;
         this.contextBuilder = contextBuilder;
         this.reviewEngine = reviewEngine;
         this.suppressionEngine = suppressionEngine;
         this.publicationHandoff = publicationHandoff;
+        this.repositoryConfigLoader = repositoryConfigLoader;
     }
 
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder) {
@@ -68,7 +80,7 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
         try {
             PullRequestLoadResult result = loader.load(job.reviewTarget());
             return switch (result.outcome()) {
-                case READY -> handleContext(job, contextBuilder.build(result.snapshot()));
+                case READY -> configureAndBuild(job, result.snapshot());
                 case STALE -> ReviewJobExecutionResult.terminal("STALE_PULL_REQUEST_REVISION");
                 case TOO_LARGE -> ReviewJobExecutionResult.terminal("PULL_REQUEST_TOO_LARGE");
             };
@@ -77,19 +89,39 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
         }
     }
 
-    private ReviewJobExecutionResult handleContext(ClaimedReviewJob job, ReviewContextBuildResult result) {
+    private ReviewJobExecutionResult configureAndBuild(ClaimedReviewJob job,
+            io.prreviewassistant.review.retrieval.PullRequestSnapshot snapshot) {
+        EffectiveRepositoryReviewConfig config = repositoryConfigLoader == null
+                ? EffectiveRepositoryReviewConfig.defaults()
+                : repositoryConfigLoader.load(snapshot).effectiveConfig();
+        var filteredSnapshot = config.filter(snapshot);
+        if (repositoryConfigLoader != null
+                && (filteredSnapshot.changedFiles().isEmpty() || config.enabledCategories().isEmpty())) {
+            return ReviewJobExecutionResult.success();
+        }
+        ReviewContextBuildResult context = repositoryConfigLoader == null
+                ? contextBuilder.build(filteredSnapshot)
+                : contextBuilder.build(filteredSnapshot, config);
+        return handleContext(job, context, config);
+    }
+
+    private ReviewJobExecutionResult handleContext(ClaimedReviewJob job, ReviewContextBuildResult result,
+            EffectiveRepositoryReviewConfig config) {
         return switch (result.outcome()) {
-            case READY, PARTIAL -> analyze(job, result);
+            case READY, PARTIAL -> analyze(job, result, config);
             case UNAVAILABLE -> ReviewJobExecutionResult.terminal("REVIEW_CONTEXT_UNAVAILABLE");
         };
     }
 
-    private ReviewJobExecutionResult analyze(ClaimedReviewJob job, ReviewContextBuildResult result) {
+    private ReviewJobExecutionResult analyze(ClaimedReviewJob job, ReviewContextBuildResult result,
+            EffectiveRepositoryReviewConfig config) {
         if (reviewEngine == null) {
             return ReviewJobExecutionResult.terminal("REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED");
         }
         try {
-            ReviewAnalysis analysis = reviewEngine.analyze(result.context());
+            ReviewAnalysis analysis = repositoryConfigLoader == null
+                    ? reviewEngine.analyze(result.context())
+                    : reviewEngine.analyze(result.context(), config.enabledCategories());
             var validated = suppressionEngine.validate(analysis, result.context());
             if (validated.findings().isEmpty()) {
                 return ReviewJobExecutionResult.success();
