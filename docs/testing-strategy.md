@@ -10,6 +10,8 @@ M12 adds strict YAML, size, encoding, duplicate-key, tag, and alias tests; bound
 
 M14 adds PostgreSQL-backed tenant/installation/repository provisioning, external-ID uniqueness, composite same-tenant foreign-key, concurrent first-use, reassignment rejection, rollback, historical V4-to-V5 upgrade, tenant-bearing job/publication, signed-webhook authority, and zero-GitHub/AI/publication denial-path tests. Tenant-like payload/config fields and mutable owner/name metadata must never affect resolved ownership.
 
+M15 adds fixed-clock unit tests for UTC month windows, quota bounds, safe metadata, unknown/partial token totals, and tenant-context enforcement. PostgreSQL 18.6 integration tests cover reservation/consumption/release, review-job idempotency, same-tenant foreign keys, direct uniqueness, populated V5-to-V6 migration, and tenant-scoped summaries. Barrier-based concurrency tests prove same-job single reservation and no quota oversubscription for many distinct jobs. Worker tests prove quota denial and ambiguous retries make zero AI calls, successful and post-provider-invalid outputs consume once, no-AI paths create no usage, and publication retries make no usage call.
+
 ## Test layers
 
 ### Unit tests
@@ -44,7 +46,7 @@ Keep sanitized, synthetic fixtures for supported GitHub event variants. M3 tests
 
 ### Concurrency tests
 
-Use the real PostgreSQL locking and transaction behavior to prove that concurrent workers do not claim the same available job, locked rows are skipped rather than blocking peers, expired work can be recovered by one new owner, stale owners cannot transition work, and concurrent completion remains safe. M4 uses latches, barriers, and bounded futures rather than sleeps for these claims. Also exercise simultaneous duplicate webhook delivery and, when those features exist, tenant quota contention and publication guards.
+Use the real PostgreSQL locking and transaction behavior to prove that concurrent workers do not claim the same available job, locked rows are skipped rather than blocking peers, expired work can be recovered by one new owner, stale owners cannot transition work, and concurrent completion remains safe. M4 uses latches, barriers, and bounded futures rather than sleeps for these claims. Also exercise simultaneous duplicate webhook delivery, tenant quota contention, same-job reservation idempotency, and publication guards.
 
 Publication concurrency tests run against PostgreSQL and prove publication-key uniqueness, `SKIP LOCKED` batch splitting, lease recovery, claim-token stale-owner rejection, and atomic payload/job handoff. An ambiguous-write scenario must prove that reconciliation finds the marker and the create-review request count remains one. Publication retry tests also assert that the AI provider invocation count remains one. M14 tests additionally prove a publication cannot reference an analysis job or repository owned by another tenant, while retries reuse the persisted association without provisioning.
 
@@ -61,6 +63,8 @@ M11 security regressions cover marker forgery, hostile Markdown and mentions, pa
 M12 security regressions treat configuration itself as hostile: unknown instruction/model/URL/secret-shaped fields fall back without content exposure; duplicate keys, custom tags, invalid UTF-8, NUL, oversized input, and alias expansion are rejected. Tests prove matching uses only bounded repository-path strings, category restrictions occur before AI, config-only/all-ignored/all-disabled work makes no provider or publication call, the authenticated base repository and exact BASE SHA are used once, HEAD policy cannot weaken its own review, fork policy never comes from the contributor repository, and publication retries never reload config. All tests remain offline and deterministic.
 
 M14 security regressions prove signed GitHub installation/repository IDs are authoritative, arbitrary tenant IDs are ignored, repository rename strings do not change identity, cross-tenant job/publication associations fail at the database boundary, ownership failures use bounded codes, and no GitHub retrieval, configuration fetch, AI invocation, or publication handoff occurs after a mismatch.
+
+M15 security regressions prove tenant-like quota/usage/plan/billing fields in webhooks and repository configuration have no authority, cross-tenant usage insertion and finalization fail closed, provider metadata is bounded, token values cannot be negative or overflow application limits, and string/error representations reveal no token counts or external content. Tests inspect the migration for the absence of source-content columns and ensure unknown measurements are not converted to zero.
 
 ## Test data and doubles
 

@@ -97,6 +97,11 @@ class RepositoryConfigParserTest {
                 tenantId: 00000000-0000-0000-0000-000000000001
                 installation: 101
                 billingOwner: attacker
+                usage: 0
+                quota: 999999
+                price: 0
+                plan: unlimited
+                reservationState: consumed
                 apiKey: sk-example
                 token: ghs_example
                 command: destructive-value

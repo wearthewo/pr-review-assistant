@@ -38,6 +38,8 @@ github:
     max-body-size: ${GITHUB_WEBHOOK_MAX_BODY_SIZE:1MB}
 
 review:
+  usage:
+    monthly-limit: ${REVIEW_USAGE_MONTHLY_LIMIT:50}
   repository-config:
     max-size: ${REPOSITORY_CONFIG_MAX_SIZE:32KB}
   analysis:

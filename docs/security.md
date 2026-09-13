@@ -110,6 +110,16 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 - Publications persist the analysis tenant/repository association. A composite analysis-job foreign key prevents a publication under another tenant, and publication retries reuse durable ownership without invoking provisioning or analysis.
 - V5 does not invent lifecycle events, tenant suspension, RLS, public tenant APIs, user membership, or billing. Historical pre-M14 rows remain nullable to avoid fabricated ownership and are barred from tenant-required execution.
 
+### Usage-accounting controls implemented in M15
+
+- The only metered unit is one logical AI analysis invocation. Webhooks, stale/config-only/all-disabled/all-ignored work, deterministic suppression, and publication retries do not consume usage.
+- Every usage operation requires explicit tenant context and a matching tenant repository/review job. Composite database foreign keys and tenant-scoped queries prevent cross-tenant attribution or reads.
+- A unique `(review_job_id, usage_type)` key makes retries idempotent. PostgreSQL transaction advisory locks serialize quota checks and reservations for each tenant and UTC month, so concurrent workers cannot oversubscribe the limit.
+- Reservations commit before AI and consumption commits afterward; no database transaction spans provider work. `RESERVED` and `CONSUMED` count against quota. Ambiguous reservations remain active and block a duplicate potentially paid call.
+- Repository content, webhook fields, and `.reviewbot.yml` cannot set tenant identity, quota, usage state, provider, model, token counts, plan, or price. The monthly limit is operator-owned configuration.
+- Usage metadata is limited to bounded safe provider/model identifiers and optional nonnegative provider-reported token counts. Unknown stays unknown. Source, prompts, raw output, error bodies, credentials, authorization data, stack traces, and monetary calculations are excluded.
+- Release is an explicit monotonic state transition retained for auditability; there is no automatic expiry or deletion. Reconciliation, billing, invoices, plans, retention, and public usage APIs remain future security designs.
+
 ### AI transport controls implemented in M8
 
 - AI is disabled by default. Enabling OpenAI requires a runtime API key; the key is redacted by configuration objects and never logged, persisted, exposed through Actuator, or copied into errors.
@@ -158,7 +168,7 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 ## Availability and abuse controls
 
 - Bound webhook body size, pull request size, fetched content, model input/output, deterministic analysis work, processing time, retries, concurrency, and stored diagnostic data.
-- Apply per-installation and service-wide quotas so a single tenant or oversized pull request cannot exhaust shared resources.
+- Enforce the M15 tenant monthly AI-analysis quota before provider invocation. Per-installation and service-wide backpressure remain additional future controls.
 - Respect GitHub rate-limit and abuse responses, use conditional or cached retrieval where safe, and apply bounded queue backoff rather than retrying aggressively.
 - Classify AI provider timeouts, throttling, malformed output, and outages. Retry only safe transient failures within a budget, use circuit breaking where demonstrated, and complete with deterministic results or a clear failure state when appropriate.
 - Never publish unchecked fallback text after an AI failure.

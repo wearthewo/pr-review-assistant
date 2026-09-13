@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. Milestone M12 adds safe repository-owned review configuration at the exact reviewed revision.
+> Project status: **pre-alpha**. Milestone M15 adds tenant-scoped AI-analysis usage accounting and monthly quota enforcement.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -33,7 +33,7 @@ The API and worker are logical components of the backend. PostgreSQL is the init
 - OpenAPI
 - OpenAI behind an internal provider abstraction
 
-The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App client, signed webhook ingestion, revision-specific jobs, bounded context retrieval, safe exact-revision repository configuration, an OpenAI Responses API adapter behind an internal structured-generation boundary, deterministic false-positive suppression, and durable GitHub review publication. The frontend remains uninitialized.
+The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App client, signed webhook ingestion, revision-specific jobs, bounded context retrieval, safe exact-revision repository configuration, an OpenAI Responses API adapter behind an internal structured-generation boundary, deterministic false-positive suppression, durable GitHub review publication, and tenant-scoped AI-analysis usage accounting. The frontend remains uninitialized.
 
 ## Repository layout
 
@@ -86,7 +86,7 @@ After startup, `GET http://localhost:8080/actuator/health` is the operational en
 
 ## Current milestone
 
-M14 establishes the internal multi-tenant ownership boundary. A verified reviewable webhook lazily and atomically resolves one application-owned tenant UUID from the authoritative GitHub installation ID, registers the numeric repository ID under that installation, and persists those immutable associations on review jobs and publications. No public tenant API or user authentication is introduced.
+M15 establishes a durable, tenant-scoped usage ledger and enforces a configurable UTC-calendar-month quota before an AI analysis invocation. One review job can own at most one logical `REVIEW_ANALYSIS` usage event. Reservations commit before the external call and are consumed afterward, so no database transaction spans AI work. No public usage API, billing, pricing, or payment functionality is introduced.
 
 The initial operator policy is confidence 85, minimum severity MEDIUM, and at most three publication candidates. Silence is better than a weak comment; zero accepted findings completes without a GitHub write.
 
@@ -120,3 +120,11 @@ categories:
 ```
 
 `fast`, `balanced`, and `deep` select application-owned profiles under operator hard ceilings; they cannot select a model or weaken suppression. Ignored files are removed before context discovery and AI. The config file excludes itself. If every file is ignored or every category is disabled, the job completes without AI or publication. Publication retries use the already persisted output and never reread configuration.
+
+## Usage accounting and quotas
+
+The billable unit is one logical AI provider analysis invocation. Webhook receipt, stale jobs, configuration-only outcomes, all-disabled/all-ignored policy, deterministic suppression, and publication retries do not consume a unit. A successful provider response consumes the reservation even when later validation or suppression produces no published findings.
+
+`REVIEW_USAGE_MONTHLY_LIMIT` defaults to `50` and accepts values from 1 through 100000. Quotas use half-open UTC calendar months. PostgreSQL transaction advisory locks serialize each tenant/month decision, while a unique review-job usage key makes retries idempotent. Both `RESERVED` and `CONSUMED` events occupy quota; `RELEASED` records remain auditable but no longer count. Provider-reported token measurements are optional metadata only: absent values remain unknown and mixed known/unknown data is reported as partial, never fabricated as zero.
+
+If a process loses the provider outcome after reserving, the reservation remains conservatively active. A retry will not make a second potentially paid call. Automated stale-reservation release, reconciliation, pricing, invoices, plan management, and tenant-facing usage APIs are intentionally deferred.

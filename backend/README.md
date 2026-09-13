@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, internal tenant ownership, durable workers, bounded exact-revision context retrieval, safe repository configuration, a disabled-by-default structured AI provider boundary, candidate review analysis, deterministic false-positive suppression, and durable GitHub review publication. It contains no public tenant API, user membership, or arbitrary repository traversal.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, internal tenant ownership, durable workers, bounded exact-revision context retrieval, safe repository configuration, a disabled-by-default structured AI provider boundary, candidate review analysis, deterministic false-positive suppression, durable GitHub review publication, and tenant-scoped analysis usage accounting. It contains no public tenant API, billing, user membership, or arbitrary repository traversal.
 
 ## Requirements
 
@@ -45,7 +45,7 @@ Check readiness at `http://localhost:8080/actuator/health`. Only the health Actu
 
 On Windows, run `.\mvnw.cmd clean verify`. Integration tests start their own pinned PostgreSQL container and do not use the local Compose database.
 
-Flyway owns schema changes. V1 creates `github_webhook_deliveries`; V2 creates `review_jobs`; V3 adds the exact GitHub review target and its uniqueness constraint; V4 adds `review_publications` and the separate leased `publication_jobs` queue. Earlier migrations remain immutable. Hibernate uses `ddl-auto: validate` and never creates or updates the schema.
+Flyway owns schema changes. V1 creates `github_webhook_deliveries`; V2 creates `review_jobs`; V3 adds the exact GitHub review target and its uniqueness constraint; V4 adds `review_publications` and the separate leased `publication_jobs` queue; V5 adds tenant ownership; V6 adds tenant usage accounting. Earlier migrations remain immutable. Hibernate uses `ddl-auto: validate` and never creates or updates the schema.
 
 ## GitHub App authentication
 
@@ -134,6 +134,14 @@ M14 resolves tenant ownership only after M3 signature verification and M5 schema
 `tenant_repositories` uses a composite foreign key to prove its installation belongs to the same tenant. New target-bearing `review_jobs` persist `tenant_id` and `tenant_repository_id`; new `review_publications` persist the same association and additionally use a composite foreign key to their analysis job's tenant. Publication queue rows reference exactly one tenant-owned publication. Repository owner/name remains authenticated routing metadata and does not affect ownership, so rename does not change identity. An attempted transfer or reassignment is rejected with a bounded ownership code until a later reconciliation workflow exists.
 
 No caller-supplied tenant UUID is accepted. Workers stop unresolved or mismatched target ownership before any GitHub, configuration, AI, or publication call. Publication retries load their immutable tenant association and never reprovision it. V5 leaves pre-M14 job/publication ownership nullable rather than fabricating unknown customer ownership; these historical rows cannot enter the tenant-required review/publication paths. Tenant status, uninstall handling, transfer reconciliation, RLS, public tenant endpoints, memberships, and billing are intentionally deferred.
+
+## Usage accounting and quotas
+
+M15 reserves one tenant usage event immediately before the first logical AI analysis invocation. The event key is the review-job ID plus `REVIEW_ANALYSIS`, so worker retries cannot create another unit. The reservation transaction commits before the provider call; consumption is a separate short transaction afterward. A successful provider response is consumed before suppression or publication, including zero-finding and all-suppressed results. Stale/config-only/all-disabled/all-ignored paths and publication retries do not reserve usage.
+
+`REVIEW_USAGE_MONTHLY_LIMIT` defaults to `50` and is validated from 1 through 100000. Quota windows are half-open UTC calendar months. `RESERVED` and `CONSUMED` rows count toward the limit; `RELEASED` rows remain auditable but do not. PostgreSQL transaction advisory locks serialize decisions for a tenant and month, and the database uniqueness constraint remains the idempotency safeguard under concurrent workers.
+
+Provider/model identifiers and optional provider-reported input, cached-input, output, reasoning-output, and total token counts may be retained as bounded operational metadata. Unknown values stay null; summaries identify partial totals rather than treating unknown as zero. Source, prompts, raw output, prices, credentials, and provider error bodies are never usage data. An ambiguous process/provider outcome leaves its reservation active and blocks a duplicate paid call. Automated reconciliation/release, billing, plans, and public usage APIs are deferred.
 
 ## Review-job worker foundation
 
