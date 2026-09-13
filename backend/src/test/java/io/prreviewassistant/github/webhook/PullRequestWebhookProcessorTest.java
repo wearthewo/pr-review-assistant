@@ -89,14 +89,16 @@ class PullRequestWebhookProcessorTest {
     }
 
     @Test
-    void payloadTenantAndMutableRepositoryNamesCannotOverrideServerResolvedOwnership() throws Exception {
+    void payloadTenantQuotaAndMutableRepositoryNamesCannotOverrideServerPolicy() throws Exception {
         ReviewTarget expected = new ReviewTarget(101, 202, 42, SHA);
         when(ownershipService.provision(101, 202)).thenReturn(TENANT_CONTEXT);
         when(jobService.createForReviewTarget(TENANT_CONTEXT, expected)).thenReturn(ReviewJobCreationResult.CREATED);
         JsonNode payload = mapper.readTree(validPayload("opened").toString()
                 .replace("renamable/name", "attacker-controlled/foreign-name")
                 .replace("\"ignored_large_schema\"",
-                        "\"tenant_id\":\"attacker-controlled\",\"ignored_large_schema\""));
+                        "\"tenant_id\":\"attacker-controlled\","
+                                + "\"usage\":0,\"quota\":999999,\"plan\":\"unlimited\","
+                                + "\"ignored_large_schema\""));
 
         assertThat(processor.process(payload)).isEqualTo(GitHubWebhookProcessingResult.JOB_CREATED);
         verify(jobService).createForReviewTarget(TENANT_CONTEXT, expected);

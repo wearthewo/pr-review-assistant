@@ -23,6 +23,10 @@ import io.prreviewassistant.review.retrieval.PullRequestLoadResult;
 import io.prreviewassistant.review.retrieval.PullRequestLoader;
 import io.prreviewassistant.review.retrieval.PullRequestSnapshot;
 import io.prreviewassistant.tenant.TenantContext;
+import io.prreviewassistant.usage.QuotaDecision;
+import io.prreviewassistant.usage.UsageAccountingService;
+import io.prreviewassistant.usage.UsagePeriod;
+import io.prreviewassistant.usage.UsageReservationResult;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -37,6 +41,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class RepositoryConfiguredReviewJobHandlerTest {
@@ -55,6 +60,7 @@ class RepositoryConfiguredReviewJobHandlerTest {
         verify(fixture.contextBuilder, never()).build(any(), any());
         verify(fixture.reviewEngine, never()).analyze(any(), any());
         verify(fixture.publication, never()).handoff(any(), any(), any(), any());
+        verifyNoInteractions(fixture.usageAccounting);
     }
 
     @Test
@@ -68,6 +74,7 @@ class RepositoryConfiguredReviewJobHandlerTest {
         verify(fixture.contextBuilder, never()).build(any(), any());
         verify(fixture.reviewEngine, never()).analyze(any(), any());
         verify(fixture.publication, never()).handoff(any(), any(), any(), any());
+        verifyNoInteractions(fixture.usageAccounting);
     }
 
     @Test
@@ -81,10 +88,11 @@ class RepositoryConfiguredReviewJobHandlerTest {
         verify(fixture.contextBuilder, never()).build(any(), any());
         verify(fixture.reviewEngine, never()).analyze(any(), any());
         verify(fixture.publication, never()).handoff(any(), any(), any(), any());
+        verifyNoInteractions(fixture.usageAccounting);
     }
 
     @Test
-    void ignorePolicyFiltersBeforeContextAndEnabledCategoriesReachAi() {
+    void ignorePolicyFiltersBeforeContextAndZeroPublishedFindingsStillConsumeUsage() {
         var categories = EnumSet.of(ReviewFindingCategory.CORRECTNESS, ReviewFindingCategory.SECURITY);
         var config = new EffectiveRepositoryReviewConfig(
                 ReviewMode.FAST, List.of("generated/**", "*.lock"), categories);
@@ -96,6 +104,8 @@ class RepositoryConfiguredReviewJobHandlerTest {
         when(fixture.contextBuilder.build(filtered.capture(), org.mockito.ArgumentMatchers.same(config)))
                 .thenReturn(ReviewContextBuildResult.ready(context));
         ReviewAnalysis analysis = mock(ReviewAnalysis.class);
+        when(analysis.metadata()).thenReturn(mock(
+                io.prreviewassistant.review.analysis.ReviewAnalysisMetadata.class));
         when(fixture.reviewEngine.analyze(context, categories)).thenReturn(analysis);
         ValidatedReview validated = mock(ValidatedReview.class);
         when(validated.findings()).thenReturn(List.of());
@@ -106,6 +116,8 @@ class RepositoryConfiguredReviewJobHandlerTest {
         assertThat(filtered.getValue().changedFiles()).extracting(ChangedFile::path)
                 .containsExactly("src/A.java");
         verify(fixture.reviewEngine).analyze(context, categories);
+        verify(fixture.usageAccounting).reserve(any(), any());
+        verify(fixture.usageAccounting).consume(any(), any(), any());
         verify(fixture.publication, never()).handoff(any(), any(), any(), any());
     }
 
@@ -119,6 +131,7 @@ class RepositoryConfiguredReviewJobHandlerTest {
         assertThat(result.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.RETRYABLE_FAILURE);
         assertThat(result.errorCode().value()).isEqualTo("GITHUB_TRANSIENT_FAILURE");
         verify(fixture.reviewEngine, never()).analyze(any(), any());
+        verifyNoInteractions(fixture.usageAccounting);
     }
 
     @Test
@@ -131,6 +144,7 @@ class RepositoryConfiguredReviewJobHandlerTest {
         verify(fixture.loader, never()).load(any());
         verify(fixture.configLoader, never()).load(any());
         verify(fixture.reviewEngine, never()).analyze(any(), any());
+        verifyNoInteractions(fixture.usageAccounting);
     }
 
     @Test
@@ -149,6 +163,82 @@ class RepositoryConfiguredReviewJobHandlerTest {
         verify(fixture.loader, never()).load(any());
         verify(fixture.reviewEngine, never()).analyze(any(), any());
         verify(fixture.publication, never()).handoff(any(), any(), any(), any());
+        verifyNoInteractions(fixture.usageAccounting);
+    }
+
+    @Test
+    void quotaDenialAndExistingReservationStopBeforeAiAndPublication() {
+        PullRequestSnapshot pullRequest = snapshot(file("src/A.java"));
+        var denied = fixture(pullRequest);
+        prepareAnalysisContext(denied, pullRequest);
+        when(denied.usageAccounting.reserve(any(), any())).thenReturn(reservation(
+                UsageReservationResult.Outcome.QUOTA_EXCEEDED, false, 3, 3));
+
+        ReviewJobExecutionResult deniedResult = denied.handler.handle(claim());
+
+        assertThat(deniedResult.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE);
+        assertThat(deniedResult.errorCode().value()).isEqualTo("USAGE_QUOTA_EXCEEDED");
+        verify(denied.reviewEngine, never()).analyze(any(), any());
+        verify(denied.publication, never()).handoff(any(), any(), any(), any());
+
+        var ambiguous = fixture(pullRequest);
+        prepareAnalysisContext(ambiguous, pullRequest);
+        when(ambiguous.usageAccounting.reserve(any(), any())).thenReturn(reservation(
+                UsageReservationResult.Outcome.EXISTING_RESERVED, false, 3, 3));
+
+        ReviewJobExecutionResult ambiguousResult = ambiguous.handler.handle(claim());
+
+        assertThat(ambiguousResult.errorCode().value()).isEqualTo("USAGE_RESERVATION_AMBIGUOUS");
+        verify(ambiguous.reviewEngine, never()).analyze(any(), any());
+        verify(ambiguous.publication, never()).handoff(any(), any(), any(), any());
+    }
+
+    @Test
+    void ambiguousProviderFailureKeepsReservationAndRetryDoesNotInvokeAiAgain() {
+        PullRequestSnapshot pullRequest = snapshot(file("src/A.java"));
+        var fixture = fixture(pullRequest);
+        prepareAnalysisContext(fixture, pullRequest);
+        when(fixture.reviewEngine.analyze(any(), any()))
+                .thenThrow(new io.prreviewassistant.ai.AiProviderException(
+                        io.prreviewassistant.ai.AiProviderErrorType.TIMEOUT));
+        ClaimedReviewJob job = claim();
+
+        ReviewJobExecutionResult first = fixture.handler.handle(job);
+        when(fixture.usageAccounting.reserve(any(), any())).thenReturn(reservation(
+                UsageReservationResult.Outcome.EXISTING_RESERVED, false, 50, 1));
+        ReviewJobExecutionResult retry = fixture.handler.handle(job);
+
+        assertThat(first.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.RETRYABLE_FAILURE);
+        assertThat(first.errorCode().value()).isEqualTo("AI_TIMEOUT");
+        assertThat(retry.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE);
+        assertThat(retry.errorCode().value()).isEqualTo("USAGE_RESERVATION_AMBIGUOUS");
+        verify(fixture.reviewEngine, org.mockito.Mockito.times(1)).analyze(any(), any());
+        verify(fixture.usageAccounting, never()).consume(any(), any(), any());
+        verify(fixture.publication, never()).handoff(any(), any(), any(), any());
+    }
+
+    @Test
+    void postProviderValidationFailureStillFinalizesReportedConsumption() {
+        PullRequestSnapshot pullRequest = snapshot(file("src/A.java"));
+        var fixture = fixture(pullRequest);
+        prepareAnalysisContext(fixture, pullRequest);
+        var metadata = mock(io.prreviewassistant.review.analysis.ReviewAnalysisMetadata.class);
+        when(fixture.reviewEngine.analyze(any(), any()))
+                .thenThrow(new io.prreviewassistant.review.analysis.ReviewAnalysisException(metadata));
+        ClaimedReviewJob job = claim();
+
+        ReviewJobExecutionResult result = fixture.handler.handle(job);
+
+        assertThat(result.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE);
+        assertThat(result.errorCode().value()).isEqualTo("AI_INVALID_OUTPUT");
+        verify(fixture.usageAccounting).consume(job.tenantContext(), job.id(), metadata);
+        verify(fixture.publication, never()).handoff(any(), any(), any(), any());
+    }
+
+    private void prepareAnalysisContext(Fixture fixture, PullRequestSnapshot snapshot) {
+        ReviewContext context = new ReviewContext(TARGET, snapshot, List.of(),
+                new ContextBudgetUsage(0, 0, 0, 0, 0, 0, false));
+        when(fixture.contextBuilder.build(any(), any())).thenReturn(ReviewContextBuildResult.ready(context));
     }
 
     private Fixture fixture(PullRequestSnapshot snapshot) {
@@ -165,9 +255,12 @@ class RepositoryConfiguredReviewJobHandlerTest {
         ReviewEngine reviewEngine = mock(ReviewEngine.class);
         FindingSuppressionEngine suppression = mock(FindingSuppressionEngine.class);
         PublicationHandoffService publication = mock(PublicationHandoffService.class);
+        UsageAccountingService usageAccounting = mock(UsageAccountingService.class);
+        when(usageAccounting.reserve(any(), any())).thenReturn(reservation(
+                UsageReservationResult.Outcome.ACQUIRED, true, 50, 0));
         return new Fixture(new PullRequestRetrievalJobHandler(loader, contextBuilder, reviewEngine,
-                suppression, publication, configLoader), loader, configLoader, contextBuilder,
-                reviewEngine, suppression, publication);
+                suppression, publication, configLoader, usageAccounting), loader, configLoader, contextBuilder,
+                reviewEngine, suppression, publication, usageAccounting);
     }
 
     private PullRequestSnapshot snapshot(ChangedFile... files) {
@@ -193,6 +286,15 @@ class RepositoryConfiguredReviewJobHandlerTest {
             ReviewContextBuilder contextBuilder,
             ReviewEngine reviewEngine,
             FindingSuppressionEngine suppression,
-            PublicationHandoffService publication) {
+            PublicationHandoffService publication,
+            UsageAccountingService usageAccounting) {
+    }
+
+    private UsageReservationResult reservation(UsageReservationResult.Outcome outcome,
+            boolean allowed, int limit, long used) {
+        UsagePeriod period = UsagePeriod.utcMonthContaining(Instant.parse("2026-09-09T12:00:00Z"));
+        long remaining = Math.max(0, limit - used);
+        return new UsageReservationResult(outcome, new QuotaDecision(allowed, limit, used, remaining,
+                period, allowed ? QuotaDecision.Reason.AVAILABLE : QuotaDecision.Reason.EXHAUSTED));
     }
 }

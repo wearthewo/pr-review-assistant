@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M14, the Spring Boot/PostgreSQL foundation, GitHub App authentication, durable webhook/job lifecycle, explicit tenant ownership, bounded exact-revision context, safe repository configuration, structured AI transport, candidate review analysis, deterministic finding suppression, and durable GitHub review publication exist.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M15, the Spring Boot/PostgreSQL foundation, GitHub App authentication, durable webhook/job lifecycle, explicit tenant ownership, bounded exact-revision context, safe repository configuration, structured AI transport, candidate review analysis, deterministic finding suppression, durable GitHub review publication, and tenant-scoped analysis usage accounting exist.
 
 ## System context
 
@@ -18,6 +18,7 @@ GitHub
   -> review worker
   -> GitHub context retrieval
   -> deterministic analyzers + AI analysis boundary
+  -> tenant usage consumption
   -> validation and ranking
   -> GitHub review publisher
 ```
@@ -43,6 +44,12 @@ Stores durable product state, ownership mappings, and review jobs. For a new rev
 ### Review worker
 
 Claims durable jobs in deterministic due/creation/ID order, commits the claim, then executes work outside a database transaction. Completion, retry, and failure use separate short ownership-checked transactions. Both schedulers remain disabled by default. Zero accepted findings complete without a GitHub write. For non-empty validated output, atomic durable handoff precedes analysis-job completion; the independent publication worker owns all GitHub-write retries, so those retries never repeat retrieval, context building, suppression, or AI.
+
+### Usage accounting boundary
+
+Owns the tenant-scoped decision to reserve, consume, or release one logical `REVIEW_ANALYSIS` unit for a review job. The review-job/usage-type key is unique. A reservation is committed immediately before AI, the provider executes outside a database transaction, and consumption is committed afterward. Both active reservations and consumed events count against the half-open UTC monthly quota. PostgreSQL transaction advisory locks serialize each tenant/month decision; composite foreign keys prove the usage job and repository belong to the same tenant.
+
+The ledger stores only bounded provider/model identifiers and optional numeric provider-reported token measurements. Unknown token data remains unknown and aggregate completeness is explicit. Source, prompts, raw model output, credentials, response bodies, and prices do not cross this boundary. Ambiguous reservations remain conservatively active to prevent a duplicate paid invocation; automated reconciliation and billing remain future concerns.
 
 ### GitHub integration
 
@@ -103,10 +110,11 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 - Secrets remain inside integration boundaries and are never logged or sent to the model.
 - Review publication accepts only validated, ranked findings.
 - Observability uses identifiers and bounded metadata rather than unnecessary source content.
+- Usage accounting is tenant-scoped, idempotent per review job, and enforced before AI without holding a transaction across the provider call.
 
 ## Deployment view
 
-The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, internal tenant/installation/repository ownership, disabled-by-default job pollers, exact-revision repository configuration, a disabled-by-default AI adapter/review engine, deterministic finding suppression, and durable review publication. Database locks, constraints, and claim tokens make provisioning and work ownership safe across processes. PostgreSQL stores ownership UUIDs, webhook envelopes, immutable targets, and only the sanitized accepted user-facing publication payload plus routing metadata. It stores no credentials, fetched context, repository configuration, prompts, raw AI responses, rejected findings, patches, or suppression content. The frontend and deployment topology remain undecided.
+The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, internal tenant/installation/repository ownership, disabled-by-default job pollers, exact-revision repository configuration, a disabled-by-default AI adapter/review engine, deterministic finding suppression, durable review publication, and tenant usage accounting. Database locks, constraints, claim tokens, and tenant/month quota locks make provisioning, work ownership, and quota decisions safe across processes. PostgreSQL stores ownership UUIDs, webhook envelopes, immutable targets, usage states with bounded operational metadata, and only the sanitized accepted user-facing publication payload plus routing metadata. It stores no credentials, fetched context, repository configuration, prompts, raw AI responses, rejected findings, patches, prices, or suppression content. The frontend and deployment topology remain undecided.
 
 ## Decision records
 

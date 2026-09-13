@@ -64,16 +64,16 @@ class PostgreSqlIntegrationTest {
     }
 
     @Test
-    void v5PreservesHistoricalReviewAndPublicationRowsWithoutInventingOwnership() throws SQLException {
-        String schema = "m14_history_" + UUID.randomUUID().toString().replace("-", "");
-        Flyway throughV4 = Flyway.configure()
+    void v6PreservesPopulatedV5HistoryWithoutInventingOwnershipOrUsage() throws SQLException {
+        String schema = "m15_history_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway throughV5 = Flyway.configure()
                 .dataSource(postgresqlContainer.getJdbcUrl(), postgresqlContainer.getUsername(),
                         postgresqlContainer.getPassword())
                 .schemas(schema)
                 .defaultSchema(schema)
-                .target(MigrationVersion.fromVersion("4"))
+                .target(MigrationVersion.fromVersion("5"))
                 .load();
-        throughV4.migrate();
+        throughV5.migrate();
         UUID jobId = UUID.randomUUID();
         UUID publicationId = UUID.randomUUID();
         OffsetDateTime now = OffsetDateTime.of(2026, 9, 13, 12, 0, 0, 0, ZoneOffset.UTC);
@@ -131,6 +131,11 @@ class PostgreSqlIntegrationTest {
                 assertThat(rows.next()).isTrue();
                 assertThat(rows.getObject("job_tenant")).isNull();
                 assertThat(rows.getObject("publication_tenant")).isNull();
+                try (var usage = connection.createStatement()
+                        .executeQuery("SELECT count(*) AS usage_count FROM tenant_usage_events")) {
+                    assertThat(usage.next()).isTrue();
+                    assertThat(usage.getLong("usage_count")).isZero();
+                }
             } finally {
                 connection.createStatement().execute("DROP SCHEMA " + schema + " CASCADE");
             }

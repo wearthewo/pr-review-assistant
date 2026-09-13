@@ -256,6 +256,22 @@ class AiReviewEngineTest {
         assertThat(provider.calls()).isEqualTo(1);
     }
 
+    @Test
+    void invalidPostProviderOutputRetainsSafeConsumptionMetadata() {
+        ReviewContext context = context(changed(PATH, ChangedFileStatus.MODIFIED,
+                "@@ -0,0 +1 @@\n+line"), List.of());
+
+        assertThatThrownBy(() -> engine(provider("{\"findings\":\"invalid\"}" )).analyze(context))
+                .isInstanceOfSatisfying(ReviewAnalysisException.class, exception -> {
+                    assertThat(exception.consumptionMetadata()).isPresent();
+                    assertThat(exception.consumptionMetadata().orElseThrow().provider()).isEqualTo("fake");
+                    assertThat(exception.consumptionMetadata().orElseThrow().tokenUsage().totalTokens())
+                            .hasValue(14);
+                })
+                .hasMessageNotContaining("line")
+                .hasMessageNotContaining("test-model");
+    }
+
     private void assertInvalid(ReviewContext context, String output) {
         assertThatThrownBy(() -> engine(provider(output)).analyze(context))
                 .isInstanceOf(ReviewAnalysisException.class)

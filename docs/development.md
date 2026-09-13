@@ -2,7 +2,7 @@
 
 ## Current state
 
-The repository is at Milestone M14. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL, Flyway, JPA validation, Actuator, Testcontainers, GitHub App authentication, secure webhook/job ingestion, internal tenant ownership, leased analysis and publication workers, bounded exact-revision context, safe repository configuration, provider-neutral structured AI transport, deterministic suppression, and durable GitHub review publication. Local infrastructure contains PostgreSQL only. There is no public tenant API, user authentication, frontend, OpenAPI specification, or CI/CD workflow.
+The repository is at Milestone M15. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL, Flyway, JPA validation, Actuator, Testcontainers, GitHub App authentication, secure webhook/job ingestion, internal tenant ownership, leased analysis and publication workers, bounded exact-revision context, safe repository configuration, provider-neutral structured AI transport, deterministic suppression, durable GitHub review publication, and tenant-scoped analysis usage accounting. Local infrastructure contains PostgreSQL only. There is no public tenant/usage API, billing, user authentication, frontend, OpenAPI specification, or CI/CD workflow.
 
 ## Prerequisites
 
@@ -63,6 +63,8 @@ On Windows, use `.\mvnw.cmd clean verify`. The test suite starts a pinned Postgr
 
 Repository context is controlled by `REVIEW_CONTEXT_ENABLED`, `REVIEW_CONTEXT_MAX_FILES`, `REVIEW_CONTEXT_MAX_FILE_BYTES`, `REVIEW_CONTEXT_MAX_TOTAL_BYTES`, `REVIEW_CONTEXT_MAX_CHANGED_FILE_BYTES`, `REVIEW_CONTEXT_MAX_LINES_PER_FILE`, `REVIEW_CONTEXT_MAX_CANDIDATES`, and `REVIEW_CONTEXT_MAX_API_REQUESTS`. These are source-byte and request limits, not model-token limits. M8 records provider-reported token usage and M9 propagates it without calculating prices.
 
+`REVIEW_USAGE_MONTHLY_LIMIT` is the operator-owned M15 AI-analysis quota per tenant and UTC calendar month. It defaults to `50` and must be between 1 and 100000. Repository configuration, webhook payloads, model output, and future tenant clients cannot override it. Changing the value affects subsequent reservation decisions; it does not rewrite ledger history.
+
 Common configuration is in `backend/src/main/resources/application.yml`. The local profile in `application-local.yml` imports the ignored root `.env` file. Non-local environments inject `DB_JDBC_URL`, `DB_USERNAME`, and `DB_PASSWORD` directly. Required values have no application defaults, so missing database configuration fails startup instead of selecting an embedded database. Secrets must never be committed, logged, exposed to the frontend, or passed to AI models.
 
 ### Repository-owned review policy
@@ -106,7 +108,7 @@ PR/repository metadata responses have a separate fixed 512 KiB bound. A missing 
 
 ## Database evolution
 
-Flyway is enabled and is the sole schema migration mechanism. V1 creates `github_webhook_deliveries`; V2 creates the leased `review_jobs` queue; V3 adds the exact GitHub review target and its same-revision uniqueness guard; V4 adds immutable publication records and the separate leased publication queue; V5 creates tenant, installation, and repository ownership and adds tenant associations to jobs/publications. Earlier migrations are unchanged. Integration tests run the full chain against PostgreSQL 18.6 through Testcontainers and verify a V4 schema containing historical rows upgrades without fabricated ownership.
+Flyway is enabled and is the sole schema migration mechanism. V1 creates `github_webhook_deliveries`; V2 creates the leased `review_jobs` queue; V3 adds the exact GitHub review target and its same-revision uniqueness guard; V4 adds immutable publication records and the separate leased publication queue; V5 creates tenant, installation, and repository ownership and adds tenant associations to jobs/publications; V6 creates tenant usage accounting and its same-tenant job constraint. Earlier migrations are unchanged. Integration tests run the full chain against PostgreSQL 18.6 through Testcontainers and verify populated V5 state upgrades without fabricated usage.
 
 M14 uses controlled lazy provisioning because no user-authenticated installation lifecycle exists yet. After signature and payload validation, a reviewable webhook supplies authoritative numeric installation/repository IDs. The internal service obtains transaction-scoped advisory locks, resolves or creates the installation's tenant and repository mapping, then creates the tenant-associated job inside the same acceptance transaction. Concurrent first use converges on one mapping. Repository owner/name is never consulted, so rename has no ownership effect; unexpected transfer/reassignment fails closed until an authenticated reconciliation workflow is designed.
 
@@ -121,6 +123,10 @@ The endpoint returns `202` for both new and duplicate valid deliveries, `400` fo
 The production job-creation operation accepts only a validated `ReviewTarget`. M6 supplies its installation ID to the existing M2 token provider, resolves GitHub's mutable owner/name from `GET /repositories/{id}`, verifies that numeric identity, fetches the PR, and compares the returned head SHA before requesting files. `Link` only signals another page; the client increments its own bounded page number on the configured base URL, and redirects are disabled.
 
 Keep `REVIEW_WORKER_ENABLED=false` and `REVIEW_PUBLICATION_ENABLED=false` until tenant policy and production permission controls are ready. Analysis and publication work execute outside claim transactions. Zero accepted findings complete with no publication record or GitHub call. Non-empty output is handed to a separate durable publication queue; publication retries never rerun AI. Uncertain POST outcomes reconcile the exact marker through bounded review-list pages before another POST.
+
+M15's `REVIEW_USAGE_MONTHLY_LIMIT` defaults to `50` and permits 1 through 100000. Before AI, a short transaction obtains a tenant/month PostgreSQL advisory lock, counts `RESERVED` plus `CONSUMED` events in the UTC half-open month, and inserts one reservation keyed by review job and usage type. The AI request runs after commit. A separate transaction consumes the event and records only bounded optional provider-reported metadata. Publication retries, no-AI policy paths, and stale work do not touch usage.
+
+An existing `CONSUMED`, `RELEASED`, or unresolved `RESERVED` event prevents another provider invocation. Active ambiguous reservations count against quota because the service cannot prove whether an interrupted external call was billed. No automated expiry is safe until reconciliation can distinguish pre-call crashes from lost post-call responses. Manual/automated reconciliation, stale release policy, pricing, invoices, plans, and tenant-facing reporting are deferred.
 
 ## AI provider configuration
 

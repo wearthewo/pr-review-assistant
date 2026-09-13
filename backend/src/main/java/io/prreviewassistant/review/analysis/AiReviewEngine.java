@@ -70,12 +70,16 @@ public final class AiReviewEngine implements ReviewEngine {
                         + properties.maxFindings() + ".",
                 input, schema, generationProfile);
         StructuredAiResponse response = provider.generateStructured(request);
-        List<ReviewFinding> findings = parseAndValidate(response.structuredOutput(), context, allowedCategories);
         var execution = response.executionMetadata();
         ReviewAnalysisMetadata metadata = new ReviewAnalysisMetadata(
                 execution.provider(), execution.model(), generationProfile.modelTier(), response.usage(),
                 execution.duration(), execution.maximumAttempts());
-        return new ReviewAnalysis(context.target(), findings, metadata);
+        try {
+            List<ReviewFinding> findings = parseAndValidate(response.structuredOutput(), context, allowedCategories);
+            return new ReviewAnalysis(context.target(), findings, metadata);
+        } catch (ReviewAnalysisException exception) {
+            throw new ReviewAnalysisException(metadata);
+        }
     }
 
     private List<ReviewFinding> parseAndValidate(String output, ReviewContext context,
