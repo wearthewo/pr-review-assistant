@@ -56,7 +56,7 @@ Every fixed vulnerability receives a test at the lowest effective level plus bou
 
 M11 security regressions cover marker forgery, hostile Markdown and mentions, payload/string redaction, secret-bearing GitHub errors, ambiguous write reconciliation, and the zero-finding no-write rule.
 
-M12 security regressions treat configuration itself as hostile: unknown instruction/model/URL/secret-shaped fields fall back without content exposure; duplicate keys, custom tags, invalid UTF-8, NUL, oversized input, and alias expansion are rejected. Tests prove matching uses only bounded repository-path strings, category restrictions occur before AI, config-only/all-ignored/all-disabled work makes no provider or publication call, exact HEAD SHA is used once, and publication retries never reload config. All tests remain offline and deterministic.
+M12 security regressions treat configuration itself as hostile: unknown instruction/model/URL/secret-shaped fields fall back without content exposure; duplicate keys, custom tags, invalid UTF-8, NUL, oversized input, and alias expansion are rejected. Tests prove matching uses only bounded repository-path strings, category restrictions occur before AI, config-only/all-ignored/all-disabled work makes no provider or publication call, the authenticated base repository and exact BASE SHA are used once, HEAD policy cannot weaken its own review, fork policy never comes from the contributor repository, and publication retries never reload config. All tests remain offline and deterministic.
 
 ## Test data and doubles
 

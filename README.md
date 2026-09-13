@@ -94,7 +94,7 @@ M11 renders accepted findings into one `COMMENT` review tied to the exact head S
 
 ## Repository review configuration
 
-M12 optionally reads one fixed `.reviewbot.yml` file from the exact pull-request head SHA. Missing or invalid configuration uses safe defaults: balanced mode, no ignore patterns, and all defect categories enabled. The only accepted version-1 controls are `review.mode`, bounded ignore globs, and booleans for the existing categories. Raw YAML is never sent to AI, logged, persisted, or interpreted as instructions.
+M12 optionally reads one fixed `.reviewbot.yml` file from the authenticated base repository at the exact pull-request base SHA. Changed code still comes from the exact head SHA. This prevents a pull request—including one from a fork—from weakening its own review policy; a merged policy change applies to later pull requests whose base revision includes it. Missing or invalid configuration uses safe defaults: balanced mode, no ignore patterns, and all defect categories enabled. The only accepted version-1 controls are `review.mode`, bounded ignore globs, and booleans for the existing categories. Raw YAML is never sent to AI, logged, persisted, or interpreted as instructions.
 
 ```yaml
 version: 1

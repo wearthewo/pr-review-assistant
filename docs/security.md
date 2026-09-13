@@ -91,7 +91,8 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 
 ### Repository configuration controls implemented in M12
 
-- `.reviewbot.yml` is fetched once through the existing installation-scoped boundary at the immutable reviewed HEAD SHA. No branch/default-branch/local-file/remote-include lookup is permitted.
+- `.reviewbot.yml` is fetched once through the existing installation-scoped boundary from the authenticated base repository at the immutable PR BASE SHA. Changed code remains pinned to the exact HEAD SHA. No head-repository/head-SHA, branch/default-branch, local-file, or remote-include policy lookup is permitted.
+- A pull request cannot weaken its own review by changing mode, categories, or ignore patterns. Fork PR policy never comes from the contributor's fork; a policy change takes effect only for later pull requests whose base revision contains the merged change.
 - Repository configuration is hostile data, never application instructions. Raw YAML, comments, ignore values, and unknown values are not logged, persisted, placed in exceptions, sent to AI, or exposed through Actuator.
 - The file defaults to a 32 KiB ceiling with a 64 KiB hard maximum and must be NUL-free UTF-8. Safe YAML construction rejects duplicate keys, aliases, custom tags, excessive nesting, unknown fields, unsupported versions, and wrong scalar types.
 - Missing, invalid, oversized, or unsupported content produces centralized balanced/all-enabled defaults plus a safe status. Authentication, permission, rate-limit, and transient GitHub failures are not disguised as missing configuration.

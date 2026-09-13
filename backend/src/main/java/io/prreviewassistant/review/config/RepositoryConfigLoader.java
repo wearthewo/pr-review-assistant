@@ -23,7 +23,7 @@ public final class RepositoryConfigLoader {
         try {
             GitHubRepositoryFile file = client.getRepositoryFile(
                     snapshot.installationId(), snapshot.repositoryOwner(), snapshot.repositoryName(),
-                    EffectiveRepositoryReviewConfig.FILE_NAME, snapshot.headSha(),
+                    EffectiveRepositoryReviewConfig.FILE_NAME, snapshot.baseSha(),
                     RepositoryConfigProperties.HARD_MAX_BYTES * 2 + RESPONSE_ENVELOPE_BYTES);
             if (file.declaredSize() > properties.maxBytes() || file.content().length > properties.maxBytes()) {
                 return RepositoryConfigLoadResult.defaults(RepositoryConfigStatus.OVERSIZED);
