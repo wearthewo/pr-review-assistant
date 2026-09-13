@@ -29,6 +29,7 @@ import io.prreviewassistant.review.job.ReviewJobStore;
 import io.prreviewassistant.review.job.ReviewJobWorker;
 import io.prreviewassistant.review.job.ReviewTarget;
 import io.prreviewassistant.review.job.ReviewWorkerProperties;
+import io.prreviewassistant.tenant.TenantOwnershipStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,6 +70,9 @@ class ReviewJobPersistenceIntegrationTest {
     @Autowired
     private ReviewJobHandler reviewJobHandler;
 
+    @Autowired
+    private TenantOwnershipStore tenantOwnershipStore;
+
     @BeforeEach
     void clearJobs() {
         jdbcClient.sql("DELETE FROM review_jobs").update();
@@ -93,9 +97,12 @@ class ReviewJobPersistenceIntegrationTest {
     void createsAndClaimsARevisionSpecificJobWithAllIdentityFields() {
         ReviewTarget target = new ReviewTarget(101, 202, 42, "a".repeat(40));
 
-        assertThat(store.createForReviewTarget(target, 3, NOW))
+        assertThat(createForTarget(target, 3, NOW))
                 .isEqualTo(ReviewJobCreationResult.CREATED);
-        assertThat(store.claimDue(NOW, LEASE, 1).getFirst().reviewTarget()).isEqualTo(target);
+        ClaimedReviewJob claim = store.claimDue(NOW, LEASE, 1).getFirst();
+        assertThat(claim.reviewTarget()).isEqualTo(target);
+        assertThat(claim.tenantContext())
+                .isEqualTo(tenantOwnershipStore.resolve(101, 202).orElseThrow());
 
         StoredTarget stored = jdbcClient.sql("""
                         SELECT github_installation_id, github_repository_id,
@@ -115,17 +122,17 @@ class ReviewJobPersistenceIntegrationTest {
     void targetCreationUsesDatabaseConflictHandlingAndEachIdentityDimension() {
         ReviewTarget target = new ReviewTarget(101, 202, 42, "a".repeat(40));
 
-        assertThat(store.createForReviewTarget(target, 3, NOW))
+        assertThat(createForTarget(target, 3, NOW))
                 .isEqualTo(ReviewJobCreationResult.CREATED);
-        assertThat(store.createForReviewTarget(target, 3, NOW))
+        assertThat(createForTarget(target, 3, NOW))
                 .isEqualTo(ReviewJobCreationResult.ALREADY_EXISTS);
-        assertThat(store.createForReviewTarget(new ReviewTarget(102, 202, 42, "a".repeat(40)), 3, NOW))
+        assertThat(createForTarget(new ReviewTarget(102, 204, 42, "a".repeat(40)), 3, NOW))
                 .isEqualTo(ReviewJobCreationResult.CREATED);
-        assertThat(store.createForReviewTarget(new ReviewTarget(101, 203, 42, "a".repeat(40)), 3, NOW))
+        assertThat(createForTarget(new ReviewTarget(101, 203, 42, "a".repeat(40)), 3, NOW))
                 .isEqualTo(ReviewJobCreationResult.CREATED);
-        assertThat(store.createForReviewTarget(new ReviewTarget(101, 202, 43, "a".repeat(40)), 3, NOW))
+        assertThat(createForTarget(new ReviewTarget(101, 202, 43, "a".repeat(40)), 3, NOW))
                 .isEqualTo(ReviewJobCreationResult.CREATED);
-        assertThat(store.createForReviewTarget(new ReviewTarget(101, 202, 42, "b".repeat(40)), 3, NOW))
+        assertThat(createForTarget(new ReviewTarget(101, 202, 42, "b".repeat(40)), 3, NOW))
                 .isEqualTo(ReviewJobCreationResult.CREATED);
 
         assertThat(jdbcClient.sql("SELECT count(*) FROM review_jobs").query(Long.class).single()).isEqualTo(5);
@@ -501,7 +508,7 @@ class ReviewJobPersistenceIntegrationTest {
     @Test
     void productionRetrievalHandlerCannotSilentlyCompleteARealReviewJob() {
         ReviewTarget target = new ReviewTarget(101, 202, 42, "a".repeat(40));
-        assertThat(store.createForReviewTarget(target, 3, NOW))
+        assertThat(createForTarget(target, 3, NOW))
                 .isEqualTo(ReviewJobCreationResult.CREATED);
         ReviewJobWorker worker = new ReviewJobWorker(
                 store,
@@ -531,5 +538,11 @@ class ReviewJobPersistenceIntegrationTest {
     }
 
     private record StoredTarget(long installationId, long repositoryId, int pullRequestNumber, String headSha) {
+    }
+
+    private ReviewJobCreationResult createForTarget(ReviewTarget target, int maxAttempts, Instant now) {
+        var context = tenantOwnershipStore.provision(
+                target.installationId(), target.repositoryId(), now);
+        return store.createForReviewTarget(context, target, maxAttempts, now);
     }
 }

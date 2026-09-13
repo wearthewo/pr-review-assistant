@@ -3,6 +3,7 @@ package io.prreviewassistant.review.job;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
+import io.prreviewassistant.tenant.TenantContext;
 
 public record ClaimedReviewJob(
         UUID id,
@@ -11,7 +12,8 @@ public record ClaimedReviewJob(
         int maxAttempts,
         Instant claimedAt,
         Instant claimExpiresAt,
-        ReviewTarget reviewTarget) {
+        ReviewTarget reviewTarget,
+        TenantContext tenantContext) {
 
     public ClaimedReviewJob {
         Objects.requireNonNull(id, "id must not be null");
@@ -23,6 +25,11 @@ public record ClaimedReviewJob(
         }
     }
 
+    public ClaimedReviewJob(UUID id, UUID claimToken, int attempt, int maxAttempts,
+            Instant claimedAt, Instant claimExpiresAt, ReviewTarget reviewTarget) {
+        this(id, claimToken, attempt, maxAttempts, claimedAt, claimExpiresAt, reviewTarget, null);
+    }
+
     public ClaimedReviewJob(
             UUID id,
             UUID claimToken,
@@ -30,7 +37,7 @@ public record ClaimedReviewJob(
             int maxAttempts,
             Instant claimedAt,
             Instant claimExpiresAt) {
-        this(id, claimToken, attempt, maxAttempts, claimedAt, claimExpiresAt, null);
+        this(id, claimToken, attempt, maxAttempts, claimedAt, claimExpiresAt, null, null);
     }
 
     @Override

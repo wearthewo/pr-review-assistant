@@ -7,6 +7,9 @@ import io.prreviewassistant.review.job.ReviewJobService;
 import io.prreviewassistant.review.job.ReviewTarget;
 import tools.jackson.databind.JsonNode;
 import org.springframework.stereotype.Component;
+import io.prreviewassistant.tenant.TenantContext;
+import io.prreviewassistant.tenant.TenantOwnershipException;
+import io.prreviewassistant.tenant.TenantOwnershipService;
 
 @Component
 public final class PullRequestWebhookProcessor {
@@ -15,9 +18,12 @@ public final class PullRequestWebhookProcessor {
     private static final Set<String> REVIEWABLE_ACTIONS = Set.of("opened", "reopened", "synchronize");
 
     private final ReviewJobService reviewJobService;
+    private final TenantOwnershipService tenantOwnershipService;
 
-    public PullRequestWebhookProcessor(ReviewJobService reviewJobService) {
+    public PullRequestWebhookProcessor(
+            ReviewJobService reviewJobService, TenantOwnershipService tenantOwnershipService) {
         this.reviewJobService = reviewJobService;
+        this.tenantOwnershipService = tenantOwnershipService;
     }
 
     public GitHubWebhookProcessingResult process(JsonNode payload) {
@@ -41,7 +47,13 @@ public final class PullRequestWebhookProcessor {
             return GitHubWebhookProcessingResult.MALFORMED;
         }
 
-        ReviewJobCreationResult result = reviewJobService.createForReviewTarget(target);
+        TenantContext tenantContext;
+        try {
+            tenantContext = tenantOwnershipService.provision(target.installationId(), target.repositoryId());
+        } catch (TenantOwnershipException exception) {
+            return GitHubWebhookProcessingResult.OWNERSHIP_REJECTED;
+        }
+        ReviewJobCreationResult result = reviewJobService.createForReviewTarget(tenantContext, target);
         return result == ReviewJobCreationResult.CREATED
                 ? GitHubWebhookProcessingResult.JOB_CREATED
                 : GitHubWebhookProcessingResult.JOB_ALREADY_EXISTS;

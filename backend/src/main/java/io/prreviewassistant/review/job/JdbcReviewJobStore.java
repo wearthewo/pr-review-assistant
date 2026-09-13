@@ -11,6 +11,7 @@ import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import io.prreviewassistant.tenant.TenantContext;
 
 @Repository
 public class JdbcReviewJobStore implements ReviewJobStore {
@@ -49,9 +50,14 @@ public class JdbcReviewJobStore implements ReviewJobStore {
 
     @Override
     @Transactional
-    public ReviewJobCreationResult createForReviewTarget(ReviewTarget target, int maxAttempts, Instant now) {
-        if (target == null) {
-            throw new IllegalArgumentException("target must not be null");
+    public ReviewJobCreationResult createForReviewTarget(
+            TenantContext tenantContext, ReviewTarget target, int maxAttempts, Instant now) {
+        if (tenantContext == null || target == null) {
+            throw new IllegalArgumentException("tenant context and target must not be null");
+        }
+        if (tenantContext.githubInstallationId() != target.installationId()
+                || tenantContext.githubRepositoryId() != target.repositoryId()) {
+            throw new IllegalArgumentException("tenant context does not own review target");
         }
         if (maxAttempts <= 0) {
             throw new IllegalArgumentException("maxAttempts must be positive");
@@ -63,9 +69,11 @@ public class JdbcReviewJobStore implements ReviewJobStore {
                             (id, status, attempts, max_attempts, next_attempt_at,
                              github_installation_id, github_repository_id,
                              github_pull_request_number, github_head_sha,
+                             tenant_id, tenant_repository_id,
                              created_at, updated_at)
                         VALUES (:id, 'READY', 0, :maxAttempts, :now,
                                 :installationId, :repositoryId, :pullRequestNumber, :headSha,
+                                :tenantId, :tenantRepositoryId,
                                 :now, :now)
                         ON CONFLICT (github_installation_id, github_repository_id,
                                      github_pull_request_number, github_head_sha) DO NOTHING
@@ -77,6 +85,8 @@ public class JdbcReviewJobStore implements ReviewJobStore {
                 .param("repositoryId", target.repositoryId())
                 .param("pullRequestNumber", target.pullRequestNumber())
                 .param("headSha", target.headSha())
+                .param("tenantId", tenantContext.tenantId())
+                .param("tenantRepositoryId", tenantContext.repositoryId())
                 .update();
         return rows == 1 ? ReviewJobCreationResult.CREATED : ReviewJobCreationResult.ALREADY_EXISTS;
     }
@@ -94,16 +104,21 @@ public class JdbcReviewJobStore implements ReviewJobStore {
         OffsetDateTime timestamp = utc(now);
         expireExhaustedClaims(timestamp, batchSize);
         List<ClaimCandidate> candidates = jdbcClient.sql("""
-                        SELECT id, attempts, max_attempts,
-                               github_installation_id, github_repository_id,
-                               github_pull_request_number, github_head_sha
-                        FROM review_jobs
-                        WHERE (status = 'READY' AND next_attempt_at <= :now)
-                           OR (status = 'PROCESSING'
-                               AND claim_expires_at <= :now
-                               AND attempts < max_attempts)
-                        ORDER BY next_attempt_at, created_at, id
-                        FOR UPDATE SKIP LOCKED
+                        SELECT job.id, job.attempts, job.max_attempts,
+                               job.github_installation_id, job.github_repository_id,
+                               job.github_pull_request_number, job.github_head_sha,
+                               job.tenant_id, job.tenant_repository_id,
+                               tenant_repository.installation_id AS tenant_installation_id
+                        FROM review_jobs job
+                        LEFT JOIN tenant_repositories tenant_repository
+                          ON tenant_repository.id = job.tenant_repository_id
+                         AND tenant_repository.tenant_id = job.tenant_id
+                        WHERE (job.status = 'READY' AND job.next_attempt_at <= :now)
+                           OR (job.status = 'PROCESSING'
+                               AND job.claim_expires_at <= :now
+                               AND job.attempts < job.max_attempts)
+                        ORDER BY job.next_attempt_at, job.created_at, job.id
+                        FOR UPDATE OF job SKIP LOCKED
                         LIMIT :batchSize
                         """)
                 .param("now", timestamp)
@@ -116,7 +131,13 @@ public class JdbcReviewJobStore implements ReviewJobStore {
                                 resultSet.getObject("github_installation_id", Long.class),
                                 resultSet.getObject("github_repository_id", Long.class),
                                 resultSet.getObject("github_pull_request_number", Integer.class),
-                                resultSet.getString("github_head_sha"))))
+                                resultSet.getString("github_head_sha")),
+                        tenantContext(
+                                resultSet.getObject("tenant_id", UUID.class),
+                                resultSet.getObject("tenant_installation_id", UUID.class),
+                                resultSet.getObject("tenant_repository_id", UUID.class),
+                                resultSet.getObject("github_installation_id", Long.class),
+                                resultSet.getObject("github_repository_id", Long.class))))
                 .list();
 
         Instant expiresAt = now.plus(leaseDuration);
@@ -141,7 +162,7 @@ public class JdbcReviewJobStore implements ReviewJobStore {
                     .param("id", candidate.id())
                     .update();
             claims.add(new ClaimedReviewJob(candidate.id(), claimToken, attempt,
-                    candidate.maxAttempts(), now, expiresAt, candidate.reviewTarget()));
+                    candidate.maxAttempts(), now, expiresAt, candidate.reviewTarget(), candidate.tenantContext()));
         }
         return List.copyOf(claims);
     }
@@ -261,6 +282,16 @@ public class JdbcReviewJobStore implements ReviewJobStore {
         return new ReviewTarget(installationId, repositoryId, pullRequestNumber, headSha);
     }
 
-    private record ClaimCandidate(UUID id, int attempts, int maxAttempts, ReviewTarget reviewTarget) {
+    private TenantContext tenantContext(UUID tenantId, UUID tenantInstallationId, UUID tenantRepositoryId,
+            Long githubInstallationId, Long githubRepositoryId) {
+        if (tenantId == null) {
+            return null;
+        }
+        return new TenantContext(tenantId, tenantInstallationId, tenantRepositoryId,
+                githubInstallationId, githubRepositoryId);
+    }
+
+    private record ClaimCandidate(UUID id, int attempts, int maxAttempts,
+            ReviewTarget reviewTarget, TenantContext tenantContext) {
     }
 }

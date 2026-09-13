@@ -8,6 +8,8 @@ M1 establishes the backend foundation tests. M2 adds authentication and cache te
 
 M12 adds strict YAML, size, encoding, duplicate-key, tag, and alias tests; bounded logical glob tests; exact-SHA content-fetch contracts; predefined mode-ceiling tests; category-constrained schema tests; and workflow tests proving early ignore and zero AI/publication for empty policy results.
 
+M14 adds PostgreSQL-backed tenant/installation/repository provisioning, external-ID uniqueness, composite same-tenant foreign-key, concurrent first-use, reassignment rejection, rollback, historical V4-to-V5 upgrade, tenant-bearing job/publication, signed-webhook authority, and zero-GitHub/AI/publication denial-path tests. Tenant-like payload/config fields and mutable owner/name metadata must never affect resolved ownership.
+
 ## Test layers
 
 ### Unit tests
@@ -44,7 +46,7 @@ Keep sanitized, synthetic fixtures for supported GitHub event variants. M3 tests
 
 Use the real PostgreSQL locking and transaction behavior to prove that concurrent workers do not claim the same available job, locked rows are skipped rather than blocking peers, expired work can be recovered by one new owner, stale owners cannot transition work, and concurrent completion remains safe. M4 uses latches, barriers, and bounded futures rather than sleeps for these claims. Also exercise simultaneous duplicate webhook delivery and, when those features exist, tenant quota contention and publication guards.
 
-Publication concurrency tests run against PostgreSQL and prove publication-key uniqueness, `SKIP LOCKED` batch splitting, lease recovery, claim-token stale-owner rejection, and atomic payload/job handoff. An ambiguous-write scenario must prove that reconciliation finds the marker and the create-review request count remains one. Publication retry tests also assert that the AI provider invocation count remains one.
+Publication concurrency tests run against PostgreSQL and prove publication-key uniqueness, `SKIP LOCKED` batch splitting, lease recovery, claim-token stale-owner rejection, and atomic payload/job handoff. An ambiguous-write scenario must prove that reconciliation finds the marker and the create-review request count remains one. Publication retry tests also assert that the AI provider invocation count remains one. M14 tests additionally prove a publication cannot reference an analysis job or repository owned by another tenant, while retries reuse the persisted association without provisioning.
 
 ### End-to-end tests
 
@@ -57,6 +59,8 @@ Every fixed vulnerability receives a test at the lowest effective level plus bou
 M11 security regressions cover marker forgery, hostile Markdown and mentions, payload/string redaction, secret-bearing GitHub errors, ambiguous write reconciliation, and the zero-finding no-write rule.
 
 M12 security regressions treat configuration itself as hostile: unknown instruction/model/URL/secret-shaped fields fall back without content exposure; duplicate keys, custom tags, invalid UTF-8, NUL, oversized input, and alias expansion are rejected. Tests prove matching uses only bounded repository-path strings, category restrictions occur before AI, config-only/all-ignored/all-disabled work makes no provider or publication call, the authenticated base repository and exact BASE SHA are used once, HEAD policy cannot weaken its own review, fork policy never comes from the contributor repository, and publication retries never reload config. All tests remain offline and deterministic.
+
+M14 security regressions prove signed GitHub installation/repository IDs are authoritative, arbitrary tenant IDs are ignored, repository rename strings do not change identity, cross-tenant job/publication associations fail at the database boundary, ownership failures use bounded codes, and no GitHub retrieval, configuration fetch, AI invocation, or publication handoff occurs after a mismatch.
 
 ## Test data and doubles
 

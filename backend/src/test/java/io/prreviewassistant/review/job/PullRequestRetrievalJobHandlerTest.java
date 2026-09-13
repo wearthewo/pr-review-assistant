@@ -44,10 +44,13 @@ import io.prreviewassistant.github.client.GitHubReviewException;
 import io.prreviewassistant.github.client.GitHubReviewErrorType;
 import io.prreviewassistant.github.client.GitHubReviewPage;
 import io.prreviewassistant.github.client.GitHubReviewPublisher;
+import io.prreviewassistant.tenant.TenantContext;
 
 class PullRequestRetrievalJobHandlerTest {
 
     private static final ReviewTarget TARGET = new ReviewTarget(1, 2, 3, "a".repeat(40));
+    private static final TenantContext TENANT_CONTEXT = new TenantContext(
+            UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 1, 2);
 
     @Test
     void successfulRetrievalNeverMarksReviewCompletedBeforeAnalysisExists() {
@@ -118,7 +121,8 @@ class PullRequestRetrievalJobHandlerTest {
         assertThat(result.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.SUCCESS);
         verify(fixture.engine(), org.mockito.Mockito.times(1)).analyze(fixture.context());
         verify(handoff, org.mockito.Mockito.times(1)).handoff(
-                org.mockito.ArgumentMatchers.eq(claim.id()), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq(claim.id()),
+                org.mockito.ArgumentMatchers.same(TENANT_CONTEXT), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.same(fixture.context().pullRequest()));
     }
 
@@ -148,7 +152,8 @@ class PullRequestRetrievalJobHandlerTest {
         Fixture fixture = fixtureWithEngine();
         PublicationHandoffService handoff = mock(PublicationHandoffService.class);
         when(handoff.handoff(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any())).thenReturn(PublicationHandoffResult.CREATED);
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenReturn(PublicationHandoffResult.CREATED);
         PullRequestRetrievalJobHandler handler = new PullRequestRetrievalJobHandler(
                 mockLoaderFor(fixture.context().pullRequest()),
                 mockContextBuilderFor(fixture.context()),
@@ -161,7 +166,8 @@ class PullRequestRetrievalJobHandlerTest {
         assertThat(result.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.SUCCESS);
         verify(fixture.engine(), org.mockito.Mockito.times(1)).analyze(fixture.context());
         verify(handoff, org.mockito.Mockito.times(1)).handoff(
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.same(TENANT_CONTEXT),
+                org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.same(fixture.context().pullRequest()));
     }
 
@@ -187,10 +193,12 @@ class PullRequestRetrievalJobHandlerTest {
                 "summary\n<!-- pr-review-assistant:publication:" + key + " -->",
                 List.of()));
         ReviewPublication pending = new ReviewPublication(
-                publicationId, UUID.randomUUID(), 1, 2, "octo", "repo", 3, "a".repeat(40),
+                publicationId, UUID.randomUUID(), TENANT_CONTEXT.tenantId(), TENANT_CONTEXT.repositoryId(),
+                1, 2, "octo", "repo", 3, "a".repeat(40),
                 key, 1, 1, encoded, PublicationStatus.PENDING, null, null);
         ReviewPublication ambiguous = new ReviewPublication(
-                publicationId, pending.analysisJobId(), 1, 2, "octo", "repo", 3, "a".repeat(40),
+                publicationId, pending.analysisJobId(), TENANT_CONTEXT.tenantId(), TENANT_CONTEXT.repositoryId(),
+                1, 2, "octo", "repo", 3, "a".repeat(40),
                 key, 1, 1, encoded, PublicationStatus.AMBIGUOUS, null, null);
         when(store.find(publicationId)).thenReturn(Optional.of(pending), Optional.of(ambiguous));
         when(store.markAmbiguous(org.mockito.ArgumentMatchers.eq(publicationId),
@@ -364,6 +372,7 @@ class PullRequestRetrievalJobHandlerTest {
     private ClaimedReviewJob claim(ReviewTarget target) {
         Instant now = Instant.parse("2026-09-06T12:00:00Z");
         return new ClaimedReviewJob(
-                UUID.randomUUID(), UUID.randomUUID(), 1, 3, now, now.plusSeconds(60), target);
+                UUID.randomUUID(), UUID.randomUUID(), 1, 3, now, now.plusSeconds(60), target,
+                target == null ? null : TENANT_CONTEXT);
     }
 }

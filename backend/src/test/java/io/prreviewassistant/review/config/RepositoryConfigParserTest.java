@@ -94,6 +94,9 @@ class RepositoryConfigParserTest {
                 model: expensive-model
                 maxTokens: 999999999
                 minimumConfidence: 0
+                tenantId: 00000000-0000-0000-0000-000000000001
+                installation: 101
+                billingOwner: attacker
                 apiKey: sk-example
                 token: ghs_example
                 command: destructive-value
@@ -101,7 +104,7 @@ class RepositoryConfigParserTest {
         var result = parse(content);
         assertThat(result.status()).isEqualTo(RepositoryConfigStatus.INVALID);
         assertThat(result.toString()).doesNotContain(
-                "attacker", "passwd", "expensive", "sk-example", "ghs_example", "destructive");
+                "attacker", "passwd", "expensive", "00000000", "sk-example", "ghs_example", "destructive");
         assertDefaults(result);
     }
 

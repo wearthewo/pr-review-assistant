@@ -4,12 +4,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import io.prreviewassistant.tenant.TenantContext;
 
 public interface ReviewJobStore {
 
     ReviewJob create(int maxAttempts, Instant now);
 
-    ReviewJobCreationResult createForReviewTarget(ReviewTarget target, int maxAttempts, Instant now);
+    ReviewJobCreationResult createForReviewTarget(
+            TenantContext tenantContext, ReviewTarget target, int maxAttempts, Instant now);
 
     List<ClaimedReviewJob> claimDue(Instant now, Duration leaseDuration, int batchSize);
 

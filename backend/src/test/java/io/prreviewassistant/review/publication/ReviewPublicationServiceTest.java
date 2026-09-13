@@ -32,6 +32,18 @@ class ReviewPublicationServiceTest {
         assertThat(result.outcome()).isEqualTo(PublicationExecutionResult.Outcome.RETRYABLE);
         assertThat(result.toString()).doesNotContain("sensitive finding");
     }
+    @Test void historicalPublicationWithoutTenantStopsBeforeGitHub(){Fixture f=fixture(PublicationStatus.PENDING);
+        ReviewPublication unowned=new ReviewPublication(f.publication.id(),f.publication.analysisJobId(),1,2,
+                "octo","repo",3,"a".repeat(40),f.publication.publicationKey(),1,1,
+                f.publication.encodedPayload(),PublicationStatus.PENDING,null,null);
+        when(f.store.find(unowned.id())).thenReturn(Optional.of(unowned));
+
+        PublicationExecutionResult result=f.service.publish(claim(unowned.id()));
+
+        assertThat(result.outcome()).isEqualTo(PublicationExecutionResult.Outcome.TERMINAL);
+        assertThat(result.errorCode()).isEqualTo("TENANT_NOT_RESOLVED");
+        verifyNoInteractions(f.client);
+    }
     @Test void definiteGitHubRejectionMarksPublicationTerminal() {
         Fixture f = fixture(PublicationStatus.PENDING);
         when(f.store.markAmbiguous(f.publication.id(), NOW)).thenReturn(true);
@@ -48,7 +60,8 @@ class ReviewPublicationServiceTest {
     private Fixture fixture(PublicationStatus status){PublicationStore store=mock(PublicationStore.class);GitHubReviewPublisher client=mock(GitHubReviewPublisher.class);
         PublicationPayloadCodec codec=new PublicationPayloadCodec(20000);String key="b".repeat(64);
         String encoded=codec.encode(new PublicationPayload(1,"sensitive finding\n"+GitHubReviewRenderer.MARKER_PREFIX+key+" -->",List.of()));
-        ReviewPublication p=new ReviewPublication(UUID.randomUUID(),UUID.randomUUID(),1,2,"octo","repo",3,"a".repeat(40),key,1,1,encoded,status,null,null);
+        ReviewPublication p=new ReviewPublication(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),
+                UUID.randomUUID(),1,2,"octo","repo",3,"a".repeat(40),key,1,1,encoded,status,null,null);
         when(store.find(p.id())).thenReturn(Optional.of(p));Clock clock=Clock.fixed(NOW,ZoneOffset.UTC);
         ReviewPublicationService service=new ReviewPublicationService(store,codec,client,properties(),clock);return new Fixture(store,client,p,service);}
     private ClaimedPublicationJob claim(UUID publicationId){return new ClaimedPublicationJob(UUID.randomUUID(),publicationId,UUID.randomUUID(),1,3,NOW,NOW.plusSeconds(60));}

@@ -86,11 +86,17 @@ After startup, `GET http://localhost:8080/actuator/health` is the operational en
 
 ## Current milestone
 
-M9 produces at most five bounded, evidence-checked candidate findings from one provider call. M10 then applies a second, provider-independent trust boundary: confidence and severity gates, changed-code and location support, concrete/actionable evidence checks, conservative severity sanity, same-category duplicate suppression, stable ranking, and a three-candidate publication ceiling.
+M14 establishes the internal multi-tenant ownership boundary. A verified reviewable webhook lazily and atomically resolves one application-owned tenant UUID from the authoritative GitHub installation ID, registers the numeric repository ID under that installation, and persists those immutable associations on review jobs and publications. No public tenant API or user authentication is introduced.
 
 The initial operator policy is confidence 85, minimum severity MEDIUM, and at most three publication candidates. Silence is better than a weak comment; zero accepted findings completes without a GitHub write.
 
 M11 renders accepted findings into one `COMMENT` review tied to the exact head SHA. It atomically stores a versioned, bounded publication payload and a separate PostgreSQL publication job before analysis completes. Publication retries never invoke retrieval, context building, suppression, or AI. An application-owned hidden marker and an `AMBIGUOUS` state reconcile uncertain POST outcomes before another write, preventing duplicate reviews. Publishing is disabled by default and requires the GitHub App `Pull requests: write` repository permission.
+
+## Tenant and installation ownership
+
+GitHub numeric installation and repository IDs are the only external ownership authorities. Owner/name strings, webhook sender fields, repository content, `.reviewbot.yml`, and supplied tenant-like fields never select an internal tenant. First use creates the tenant, installation, and repository mappings in one transaction; PostgreSQL advisory locks plus unique and composite foreign-key constraints make concurrent provisioning converge on one mapping and prevent cross-tenant reassignment.
+
+Review jobs carry the resolved tenant and internal repository association. Workers reject unresolved or mismatched ownership before GitHub retrieval, configuration loading, AI, or publication. Publications retain the same tenant association as their analysis job, and publication-only retries reuse persisted ownership without reprovisioning. Historical pre-M14 jobs/publications keep nullable ownership during this safe transition and cannot execute tenant-required production paths. Installation removal, repository transfer reconciliation, tenant suspension, RLS, retention, memberships, and billing remain deferred.
 
 ## Repository review configuration
 

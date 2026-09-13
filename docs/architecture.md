@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M12, the Spring Boot/PostgreSQL foundation, GitHub App authentication, durable webhook/job lifecycle, bounded exact-revision context, safe repository configuration, structured AI transport, candidate review analysis, deterministic finding suppression, and durable GitHub review publication exist.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M14, the Spring Boot/PostgreSQL foundation, GitHub App authentication, durable webhook/job lifecycle, explicit tenant ownership, bounded exact-revision context, safe repository configuration, structured AI transport, candidate review analysis, deterministic finding suppression, and durable GitHub review publication exist.
 
 ## System context
 
@@ -26,7 +26,11 @@ GitHub
 
 ### Webhook ingestion
 
-Terminates GitHub webhook requests, bounds the raw request body, authenticates its exact bytes, validates minimum envelope metadata and JSON syntax, and durably deduplicates accepted delivery IDs. M5 dispatches only already-verified JSON. It recognizes `pull_request` actions `opened`, `reopened`, and `synchronize`, validates only the fields needed for an exact revision, and ignores all other events/actions. Signed but malformed reviewable events remain durable without jobs. Tenant resolution remains future work; no GitHub API call or review work occurs at ingress.
+Terminates GitHub webhook requests, bounds the raw request body, authenticates its exact bytes, validates minimum envelope metadata and JSON syntax, and durably deduplicates accepted delivery IDs. M5 dispatches only already-verified JSON. It recognizes `pull_request` actions `opened`, `reopened`, and `synchronize`, validates only the fields needed for an exact revision, and ignores all other events/actions. Signed but malformed reviewable events remain durable without jobs. For a valid reviewable event, M14 resolves ownership from the signed installation and numeric repository IDs inside the existing short acceptance transaction; no GitHub API call or review work occurs at ingress.
+
+### Tenant ownership boundary
+
+Maps authoritative GitHub installation and repository numeric IDs to application-owned UUIDs. First use provisions tenant, installation, and repository records atomically; transaction-scoped PostgreSQL advisory locks coordinate races while unique and composite foreign-key constraints remain the durable safeguards. Repository owner/name and repository content are never ownership authorities. Reassignment across installations or tenants fails closed with a bounded code. Status workflows, uninstall/transfer reconciliation, memberships, and public tenant administration remain outside M14.
 
 ### API and application boundary
 
@@ -34,7 +38,7 @@ Owns use-case coordination, authorization, tenant context, and transaction bound
 
 ### PostgreSQL system of record and job queue
 
-Stores durable product state and review jobs. For a new reviewable delivery, its raw envelope and conflict-safe job insertion commit atomically. The review identity is installation ID, numeric repository ID, pull request number, and immutable expected head object ID. Delivery uniqueness and review-target uniqueness are separate database guarantees. M4 queue operations create `READY` work and transactionally claim bounded due batches using PostgreSQL row locking with `SKIP LOCKED`. Jobs move through `READY`, `PROCESSING`, `COMPLETED`, or `FAILED`; retry delay remains data in `next_attempt_at` rather than a separate status. PostgreSQL remains the source of truth; Redis and Kafka remain unjustified.
+Stores durable product state, ownership mappings, and review jobs. For a new reviewable delivery, its raw envelope, ownership provisioning/resolution, and conflict-safe tenant-associated job insertion commit atomically. The review identity is installation ID, numeric repository ID, pull request number, and immutable expected head object ID. Delivery uniqueness and review-target uniqueness are separate database guarantees. M4 queue operations create `READY` work and transactionally claim bounded due batches using PostgreSQL row locking with `SKIP LOCKED`. Jobs move through `READY`, `PROCESSING`, `COMPLETED`, or `FAILED`; retry delay remains data in `next_attempt_at` rather than a separate status. PostgreSQL remains the source of truth; Redis and Kafka remain unjustified.
 
 ### Review worker
 
@@ -102,7 +106,7 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, disabled-by-default job pollers, exact-revision repository configuration, a disabled-by-default AI adapter/review engine, deterministic finding suppression, and durable review publication. Database locks and claim tokens make ownership safe across processes. PostgreSQL stores webhook envelopes, immutable targets, and only the sanitized accepted user-facing publication payload plus routing metadata. It stores no credentials, fetched context, repository configuration, prompts, raw AI responses, rejected findings, patches, or suppression content. The frontend and deployment topology remain undecided.
+The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, internal tenant/installation/repository ownership, disabled-by-default job pollers, exact-revision repository configuration, a disabled-by-default AI adapter/review engine, deterministic finding suppression, and durable review publication. Database locks, constraints, and claim tokens make provisioning and work ownership safe across processes. PostgreSQL stores ownership UUIDs, webhook envelopes, immutable targets, and only the sanitized accepted user-facing publication payload plus routing metadata. It stores no credentials, fetched context, repository configuration, prompts, raw AI responses, rejected findings, patches, or suppression content. The frontend and deployment topology remain undecided.
 
 ## Decision records
 

@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, a durable worker, bounded exact-revision context retrieval, safe repository configuration, a disabled-by-default structured AI provider boundary, candidate review analysis, deterministic false-positive suppression, and durable GitHub review publication. It contains no tenant persistence or arbitrary repository traversal.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, internal tenant ownership, durable workers, bounded exact-revision context retrieval, safe repository configuration, a disabled-by-default structured AI provider boundary, candidate review analysis, deterministic false-positive suppression, and durable GitHub review publication. It contains no public tenant API, user membership, or arbitrary repository traversal.
 
 ## Requirements
 
@@ -126,6 +126,14 @@ The endpoint reads at most the configured limit plus one byte, verifies HMAC-SHA
 New and duplicate valid deliveries return `202 Accepted`. PostgreSQL uniqueness on `github_delivery_id` plus `INSERT ... ON CONFLICT DO NOTHING` makes concurrent redelivery idempotent. M5 interprets only `pull_request` actions `opened`, `reopened`, and `synchronize`; other events and actions are accepted without jobs. A relevant event uses GitHub's top-level `number` plus `installation.id`, numeric `repository.id`, and `pull_request.head.sha`. Signed but incomplete relevant events are retained without jobs and acknowledged because redelivery cannot repair their schema.
 
 For a new valid reviewable event, webhook insertion and conflict-safe review-job insertion share one short transaction. A job failure rolls back the webhook, so GitHub receives a server failure and can redeliver. Duplicate deliveries do not reprocess; distinct deliveries for the same target still persist while the unique `(installation, repository, PR number, head SHA)` key creates only one job. Signature verification and JSON validation still occur before this transaction, and no GitHub API call or review work runs in the request.
+
+## Tenant ownership
+
+M14 resolves tenant ownership only after M3 signature verification and M5 schema validation. The signed `installation.id` and numeric `repository.id` are authoritative inputs to a narrow internal provisioning service. On first use, one transaction creates an application-owned tenant UUID, a globally unique GitHub installation mapping, and a repository mapping owned by that installation. Transaction-scoped PostgreSQL advisory locks serialize competing first-use operations; database uniqueness remains the durable identity guard.
+
+`tenant_repositories` uses a composite foreign key to prove its installation belongs to the same tenant. New target-bearing `review_jobs` persist `tenant_id` and `tenant_repository_id`; new `review_publications` persist the same association and additionally use a composite foreign key to their analysis job's tenant. Publication queue rows reference exactly one tenant-owned publication. Repository owner/name remains authenticated routing metadata and does not affect ownership, so rename does not change identity. An attempted transfer or reassignment is rejected with a bounded ownership code until a later reconciliation workflow exists.
+
+No caller-supplied tenant UUID is accepted. Workers stop unresolved or mismatched target ownership before any GitHub, configuration, AI, or publication call. Publication retries load their immutable tenant association and never reprovision it. V5 leaves pre-M14 job/publication ownership nullable rather than fabricating unknown customer ownership; these historical rows cannot enter the tenant-required review/publication paths. Tenant status, uninstall handling, transfer reconciliation, RLS, public tenant endpoints, memberships, and billing are intentionally deferred.
 
 ## Review-job worker foundation
 
