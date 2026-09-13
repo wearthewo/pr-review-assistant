@@ -74,6 +74,13 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
         if (job.reviewTarget() == null) {
             return ReviewJobExecutionResult.success();
         }
+        if (job.tenantContext() == null) {
+            return ReviewJobExecutionResult.terminal("TENANT_NOT_RESOLVED");
+        }
+        if (job.tenantContext().githubInstallationId() != job.reviewTarget().installationId()
+                || job.tenantContext().githubRepositoryId() != job.reviewTarget().repositoryId()) {
+            return ReviewJobExecutionResult.terminal("TENANT_REPOSITORY_OWNERSHIP_MISMATCH");
+        }
         if (publicationHandoff != null && publicationHandoff.alreadyHandedOff(job.id())) {
             return ReviewJobExecutionResult.success();
         }
@@ -129,7 +136,8 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
             if (publicationHandoff == null) {
                 return ReviewJobExecutionResult.terminal("REVIEW_PUBLISHING_NOT_IMPLEMENTED");
             }
-            publicationHandoff.handoff(job.id(), validated, result.context().pullRequest());
+            publicationHandoff.handoff(
+                    job.id(), job.tenantContext(), validated, result.context().pullRequest());
             return ReviewJobExecutionResult.success();
         } catch (AiProviderException exception) {
             return map(exception.errorType());

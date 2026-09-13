@@ -3,6 +3,7 @@ package io.prreviewassistant.review.job;
 import java.time.Clock;
 
 import org.springframework.stereotype.Service;
+import io.prreviewassistant.tenant.TenantContext;
 
 @Service
 public final class ReviewJobService {
@@ -21,7 +22,7 @@ public final class ReviewJobService {
         return store.create(properties.maxAttempts(), clock.instant());
     }
 
-    public ReviewJobCreationResult createForReviewTarget(ReviewTarget target) {
-        return store.createForReviewTarget(target, properties.maxAttempts(), clock.instant());
+    public ReviewJobCreationResult createForReviewTarget(TenantContext tenantContext, ReviewTarget target) {
+        return store.createForReviewTarget(tenantContext, target, properties.maxAttempts(), clock.instant());
     }
 }

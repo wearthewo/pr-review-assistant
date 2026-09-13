@@ -57,7 +57,7 @@ This document defines required controls. Concrete libraries, schemas, thresholds
 - Expired claims are recovered by later polls without manual repair. An expired claim at its maximum attempt is terminalized rather than reclaimed indefinitely.
 - Error storage accepts only a 64-character uppercase safe code. Jobs contain no payload, source content, stack trace, external response, GitHub credential, webhook value, or authorization data.
 - Poll batches, lease duration, retry delays, and attempt counts are validated and bounded. The scheduler is disabled by default and prevents overlapping ticks within one process; PostgreSQL locking remains the cross-process control.
-- M4 deliberately has no tenant or installation data. Before real review work is enqueued, a later milestone must add explicit authenticated tenant/installation ownership and its isolation tests.
+- M4's targetless compatibility jobs predate tenant ownership. M14 permits those historical rows to remain nullable, but tenant-required review execution rejects them before external or AI work.
 
 ### Pull request event controls implemented in M5
 
@@ -67,7 +67,7 @@ This document defines required controls. Concrete libraries, schemas, thresholds
 - A signed but malformed relevant event is retained as an accepted delivery without a job and without logging payload-derived error detail. This avoids futile GitHub retries for permanently unprocessable content.
 - A new reviewable delivery and its job commit in one short transaction. Job insertion failure rolls back the webhook; duplicate-target conflict is a normal result that still permits a distinct delivery to commit.
 - Webhook delivery ID protects transport idempotency. A separate database unique key over installation, numeric repository, PR number, and head SHA protects business idempotency across deliveries and repository renames.
-- Installation identity is explicit in every M5 job and selects M2 credentials during M6 retrieval. Internal tenant resolution and authorization remain required before production outbound enablement.
+- Installation identity is explicit in every M5 job and selects M2 credentials during M6 retrieval. M14 binds new review work to an internal tenant and registered repository before that retrieval can run.
 - M5 itself performs no GitHub API or AI call. M6 replaces the no-op boundary without allowing retrieval to masquerade as a completed review.
 
 ### Pull request retrieval controls implemented in M6
@@ -100,6 +100,15 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 - Only fixed review modes and existing category booleans are accepted. Modes remain under M7 hard ceilings and all preserve one AI call maximum and M10 trust policy. Enabled categories constrain trusted instructions and schema before AI; repositories cannot select models, provider settings, confidence, output limits, or publication policy.
 - The control file and ignored changed/auxiliary files are removed before context discovery and serialization. All-disabled, all-ignored, and config-only work completes with no AI or GitHub publication.
 - Publication payloads contain no configuration. Once handoff commits, M11 retries neither reread configuration nor repeat analysis.
+
+### Tenant ownership controls implemented in M14
+
+- Internal tenant, installation, and repository identifiers are application-generated UUIDs. Only the signature-verified webhook's positive GitHub installation ID and numeric repository ID can establish or resolve ownership; payload tenant fields, repository owner/name, sender metadata, paths, source, and repository configuration have no tenant authority.
+- First-use provisioning runs in the same transaction as accepted-delivery and review-job creation. PostgreSQL transaction-scoped advisory locks coordinate concurrent first use, unique external IDs prevent duplicate mappings, and composite foreign keys prove repository, job, analysis, and publication tenant consistency.
+- Repository rename does not change ownership because numeric GitHub repository ID is authoritative. Unexpected installation/repository reassignment fails closed with bounded `TENANT_REPOSITORY_OWNERSHIP_MISMATCH`. Transfer and uninstall reconciliation are deferred rather than guessed from mutable names.
+- New target-bearing jobs persist tenant and internal repository ownership. Claiming reconstructs that context from constrained database rows. Missing or mismatched ownership terminates before GitHub retrieval, config loading, AI, or publication.
+- Publications persist the analysis tenant/repository association. A composite analysis-job foreign key prevents a publication under another tenant, and publication retries reuse durable ownership without invoking provisioning or analysis.
+- V5 does not invent lifecycle events, tenant suspension, RLS, public tenant APIs, user membership, or billing. Historical pre-M14 rows remain nullable to avoid fabricated ownership and are barred from tenant-required execution.
 
 ### AI transport controls implemented in M8
 

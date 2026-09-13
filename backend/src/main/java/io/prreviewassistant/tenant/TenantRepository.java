@@ -1,0 +1,19 @@
+package io.prreviewassistant.tenant;
+
+import java.time.Instant;
+import java.util.Objects;
+import java.util.UUID;
+
+public record TenantRepository(UUID id, UUID tenantId, UUID installationId, long githubRepositoryId,
+        Instant createdAt, Instant updatedAt) {
+    public TenantRepository {
+        Objects.requireNonNull(id, "id is required");
+        Objects.requireNonNull(tenantId, "tenantId is required");
+        Objects.requireNonNull(installationId, "installationId is required");
+        Objects.requireNonNull(createdAt, "createdAt is required");
+        Objects.requireNonNull(updatedAt, "updatedAt is required");
+        if (githubRepositoryId <= 0 || updatedAt.isBefore(createdAt)) {
+            throw new IllegalArgumentException("repository ownership is invalid");
+        }
+    }
+}

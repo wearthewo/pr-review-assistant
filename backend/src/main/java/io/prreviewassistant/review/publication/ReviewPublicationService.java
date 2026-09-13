@@ -18,6 +18,8 @@ public final class ReviewPublicationService {
     public PublicationExecutionResult publish(ClaimedPublicationJob job){
         ReviewPublication publication=store.find(job.publicationId()).orElse(null);
         if(publication==null)return PublicationExecutionResult.terminal("PUBLICATION_NOT_FOUND");
+        if(publication.tenantId()==null || publication.tenantRepositoryId()==null)
+            return PublicationExecutionResult.terminal("TENANT_NOT_RESOLVED");
         if(publication.status()==PublicationStatus.PUBLISHED)return PublicationExecutionResult.success();
         if(publication.status()==PublicationStatus.FAILED)return PublicationExecutionResult.terminal("PUBLICATION_ALREADY_FAILED");
         PublicationPayload payload;

@@ -12,6 +12,7 @@ import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
+import io.prreviewassistant.tenant.TenantContext;
 
 @Repository
 public class JdbcPublicationStore implements PublicationStore {
@@ -19,19 +20,29 @@ public class JdbcPublicationStore implements PublicationStore {
     public JdbcPublicationStore(JdbcClient jdbc) { this.jdbc = jdbc; }
 
     @Override @Transactional
-    public PublicationHandoffResult create(UUID analysisJobId, ReviewTarget target, String owner, String repository,
+    public PublicationHandoffResult create(UUID analysisJobId, TenantContext tenantContext,
+            ReviewTarget target, String owner, String repository,
             String key, int findingCount, String payload, int maxAttempts, Instant now) {
+        if (tenantContext == null
+                || tenantContext.githubInstallationId() != target.installationId()
+                || tenantContext.githubRepositoryId() != target.repositoryId()) {
+            throw new IllegalArgumentException("tenant context does not own publication target");
+        }
         UUID publicationId = UUID.randomUUID(); UUID jobId = UUID.randomUUID(); OffsetDateTime timestamp = utc(now);
         int inserted = jdbc.sql("""
                 INSERT INTO review_publications
-                  (id, analysis_job_id, github_installation_id, github_repository_id,
+                  (id, analysis_job_id, tenant_id, tenant_repository_id,
+                   github_installation_id, github_repository_id,
                    github_repository_owner, github_repository_name, github_pull_request_number,
                    github_head_sha, publication_key, payload_version, finding_count, payload,
                    status, created_at, updated_at)
-                VALUES (:id, :analysisJobId, :installationId, :repositoryId, :owner, :repository,
+                VALUES (:id, :analysisJobId, :tenantId, :tenantRepositoryId,
+                        :installationId, :repositoryId, :owner, :repository,
                         :pullNumber, :headSha, :key, 1, :findingCount, :payload, 'PENDING', :now, :now)
                 ON CONFLICT DO NOTHING
                 """).param("id", publicationId).param("analysisJobId", analysisJobId)
+                .param("tenantId", tenantContext.tenantId())
+                .param("tenantRepositoryId", tenantContext.repositoryId())
                 .param("installationId", target.installationId()).param("repositoryId", target.repositoryId())
                 .param("owner", owner).param("repository", repository).param("pullNumber", target.pullRequestNumber())
                 .param("headSha", target.headSha()).param("key", key).param("findingCount", findingCount)
@@ -76,11 +87,13 @@ public class JdbcPublicationStore implements PublicationStore {
     }
 
     @Override public Optional<ReviewPublication> find(UUID id) {
-        return jdbc.sql("SELECT id, analysis_job_id, github_installation_id, github_repository_id, "
+        return jdbc.sql("SELECT id, analysis_job_id, tenant_id, tenant_repository_id, github_installation_id, github_repository_id, "
                 + "github_repository_owner, github_repository_name, github_pull_request_number, github_head_sha, "
                 + "publication_key, payload_version, finding_count, payload, status, github_review_id, published_at "
                 + "FROM review_publications WHERE id=:id").param("id",id).query((rs,n)->new ReviewPublication(
-                rs.getObject("id",UUID.class),rs.getObject("analysis_job_id",UUID.class),rs.getLong("github_installation_id"),
+                rs.getObject("id",UUID.class),rs.getObject("analysis_job_id",UUID.class),
+                rs.getObject("tenant_id",UUID.class),rs.getObject("tenant_repository_id",UUID.class),
+                rs.getLong("github_installation_id"),
                 rs.getLong("github_repository_id"),rs.getString("github_repository_owner"),rs.getString("github_repository_name"),
                 rs.getInt("github_pull_request_number"),rs.getString("github_head_sha"),rs.getString("publication_key").trim(),
                 rs.getInt("payload_version"),rs.getInt("finding_count"),rs.getString("payload"),

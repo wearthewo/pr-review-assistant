@@ -6,9 +6,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import io.prreviewassistant.tenant.TenantContext;
 
 public interface PublicationStore {
-    PublicationHandoffResult create(UUID analysisJobId, ReviewTarget target, String owner, String repository,
+    PublicationHandoffResult create(UUID analysisJobId, TenantContext tenantContext,
+            ReviewTarget target, String owner, String repository,
             String publicationKey, int findingCount, String encodedPayload, int maxAttempts, Instant now);
     boolean existsForAnalysisJob(UUID analysisJobId);
     List<ClaimedPublicationJob> claimDue(Instant now, Duration lease, int batchSize);

@@ -63,6 +63,9 @@ class PullRequestIngestionIntegrationTest {
         mockMvc = MockMvcBuilders.webAppContextSetup(applicationContext).build();
         jdbcClient.sql("DELETE FROM review_jobs").update();
         jdbcClient.sql("DELETE FROM github_webhook_deliveries").update();
+        jdbcClient.sql("DELETE FROM tenant_repositories").update();
+        jdbcClient.sql("DELETE FROM github_installations").update();
+        jdbcClient.sql("DELETE FROM tenants").update();
     }
 
     @Test
@@ -74,6 +77,10 @@ class PullRequestIngestionIntegrationTest {
         assertThat(reviewTargets()).containsExactlyInAnyOrder(
                 new StoredTarget(101, 202, 42, SHA_A),
                 new StoredTarget(101, 202, 42, SHA_B));
+        assertThat(jdbcClient.sql("""
+                SELECT count(*) FROM review_jobs
+                WHERE tenant_id IS NOT NULL AND tenant_repository_id IS NOT NULL
+                """).query(Long.class).single()).isEqualTo(2);
     }
 
     @Test
@@ -110,13 +117,25 @@ class PullRequestIngestionIntegrationTest {
     @Test
     void reviewIdentityIncludesInstallationRepositoryPullRequestAndSha() {
         ingest("d1", "pull_request", pullRequest("opened", 101, 202, 42, SHA_A));
-        ingest("d2", "pull_request", pullRequest("opened", 102, 202, 42, SHA_A));
+        ingest("d2", "pull_request", pullRequest("opened", 102, 204, 42, SHA_A));
         ingest("d3", "pull_request", pullRequest("opened", 101, 203, 42, SHA_A));
         ingest("d4", "pull_request", pullRequest("opened", 101, 202, 43, SHA_A));
         ingest("d5", "pull_request", pullRequest("opened", 101, 202, 42, SHA_B));
 
         assertThat(deliveryCount()).isEqualTo(5);
         assertThat(jobCount()).isEqualTo(5);
+    }
+
+    @Test
+    void signedRepositoryReassignmentIsRetainedButCreatesNoForeignTenantJob() {
+        ingest("owner", "pull_request", pullRequest("opened", 101, 202, 42, SHA_A));
+        ingest("attacker", "pull_request", pullRequest("opened", 102, 202, 43, SHA_B));
+
+        assertThat(deliveryCount()).isEqualTo(2);
+        assertThat(jobCount()).isOne();
+        assertThat(jdbcClient.sql("SELECT count(*) FROM github_installations")
+                .query(Long.class).single()).isOne();
+        assertThat(reviewTargets()).containsExactly(new StoredTarget(101, 202, 42, SHA_A));
     }
 
     @Test

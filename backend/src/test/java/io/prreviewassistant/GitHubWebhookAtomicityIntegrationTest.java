@@ -54,7 +54,7 @@ class GitHubWebhookAtomicityIntegrationTest {
 
     @Test
     void jobInsertionFailureRollsBackTheAlreadyAttemptedWebhookInsert() {
-        when(reviewJobService.createForReviewTarget(any()))
+        when(reviewJobService.createForReviewTarget(any(), any()))
                 .thenThrow(new DataAccessResourceFailureException("synthetic insertion failure"));
         byte[] body = ("{\"action\":\"opened\",\"installation\":{\"id\":1},"
                 + "\"repository\":{\"id\":2},\"number\":3,\"pull_request\":{\"head\":{"
@@ -67,6 +67,12 @@ class GitHubWebhookAtomicityIntegrationTest {
         assertThat(jdbcClient.sql("SELECT count(*) FROM github_webhook_deliveries")
                 .query(Long.class).single()).isZero();
         assertThat(jdbcClient.sql("SELECT count(*) FROM review_jobs")
+                .query(Long.class).single()).isZero();
+        assertThat(jdbcClient.sql("SELECT count(*) FROM tenant_repositories")
+                .query(Long.class).single()).isZero();
+        assertThat(jdbcClient.sql("SELECT count(*) FROM github_installations")
+                .query(Long.class).single()).isZero();
+        assertThat(jdbcClient.sql("SELECT count(*) FROM tenants")
                 .query(Long.class).single()).isZero();
     }
 

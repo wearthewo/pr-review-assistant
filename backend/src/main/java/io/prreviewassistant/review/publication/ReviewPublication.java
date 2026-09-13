@@ -4,7 +4,8 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 
-public record ReviewPublication(UUID id, UUID analysisJobId, long installationId, long repositoryId,
+public record ReviewPublication(UUID id, UUID analysisJobId, UUID tenantId, UUID tenantRepositoryId,
+        long installationId, long repositoryId,
         String repositoryOwner, String repositoryName, int pullRequestNumber, String headSha,
         String publicationKey, int payloadVersion, int findingCount, String encodedPayload,
         PublicationStatus status, Long githubReviewId, Instant publishedAt) {
@@ -12,6 +13,9 @@ public record ReviewPublication(UUID id, UUID analysisJobId, long installationId
         Objects.requireNonNull(id, "id is required");
         Objects.requireNonNull(analysisJobId, "analysisJobId is required");
         Objects.requireNonNull(status, "status is required");
+        if ((tenantId == null) != (tenantRepositoryId == null)) {
+            throw new IllegalArgumentException("publication tenant ownership is invalid");
+        }
         if (installationId <= 0 || repositoryId <= 0 || pullRequestNumber <= 0
                 || repositoryOwner == null || repositoryOwner.isBlank()
                 || repositoryOwner.length() > 100
@@ -26,6 +30,15 @@ public record ReviewPublication(UUID id, UUID analysisJobId, long installationId
                         != (githubReviewId != null && githubReviewId > 0 && publishedAt != null)) {
             throw new IllegalArgumentException("review publication is invalid");
         }
+    }
+
+    public ReviewPublication(UUID id, UUID analysisJobId, long installationId, long repositoryId,
+            String repositoryOwner, String repositoryName, int pullRequestNumber, String headSha,
+            String publicationKey, int payloadVersion, int findingCount, String encodedPayload,
+            PublicationStatus status, Long githubReviewId, Instant publishedAt) {
+        this(id, analysisJobId, null, null, installationId, repositoryId, repositoryOwner,
+                repositoryName, pullRequestNumber, headSha, publicationKey, payloadVersion,
+                findingCount, encodedPayload, status, githubReviewId, publishedAt);
     }
 
     @Override public String toString() {

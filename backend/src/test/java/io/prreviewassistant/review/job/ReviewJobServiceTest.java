@@ -11,6 +11,8 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
 
+import io.prreviewassistant.tenant.TenantContext;
+
 import org.junit.jupiter.api.Test;
 
 class ReviewJobServiceTest {
@@ -34,13 +36,17 @@ class ReviewJobServiceTest {
     void createsForReviewTargetWithConfiguredAttemptsAtInjectedClockTime() {
         Instant now = Instant.parse("2026-09-04T12:00:00Z");
         ReviewTarget target = new ReviewTarget(1, 2, 3, "a".repeat(40));
+        TenantContext tenantContext = new TenantContext(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 1, 2);
         ReviewJobStore store = mock(ReviewJobStore.class);
-        when(store.createForReviewTarget(target, 4, now)).thenReturn(ReviewJobCreationResult.CREATED);
+        when(store.createForReviewTarget(tenantContext, target, 4, now))
+                .thenReturn(ReviewJobCreationResult.CREATED);
         ReviewJobProperties properties =
                 new ReviewJobProperties(4, Duration.ofSeconds(10), Duration.ofMinutes(5));
         ReviewJobService service = new ReviewJobService(store, properties, Clock.fixed(now, ZoneOffset.UTC));
 
-        assertThat(service.createForReviewTarget(target)).isEqualTo(ReviewJobCreationResult.CREATED);
-        verify(store).createForReviewTarget(target, 4, now);
+        assertThat(service.createForReviewTarget(tenantContext, target))
+                .isEqualTo(ReviewJobCreationResult.CREATED);
+        verify(store).createForReviewTarget(tenantContext, target, 4, now);
     }
 }

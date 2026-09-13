@@ -22,6 +22,7 @@ import io.prreviewassistant.review.retrieval.PatchAvailability;
 import io.prreviewassistant.review.retrieval.PullRequestLoadResult;
 import io.prreviewassistant.review.retrieval.PullRequestLoader;
 import io.prreviewassistant.review.retrieval.PullRequestSnapshot;
+import io.prreviewassistant.tenant.TenantContext;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -40,6 +41,8 @@ import static org.mockito.Mockito.when;
 
 class RepositoryConfiguredReviewJobHandlerTest {
     private static final ReviewTarget TARGET = new ReviewTarget(1, 2, 3, "a".repeat(40));
+    private static final TenantContext TENANT_CONTEXT = new TenantContext(
+            UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 1, 2);
 
     @Test
     void configOnlyPullRequestLoadsConfigThenCompletesWithoutContextAiOrPublication() {
@@ -51,7 +54,7 @@ class RepositoryConfiguredReviewJobHandlerTest {
         verify(fixture.configLoader).load(any());
         verify(fixture.contextBuilder, never()).build(any(), any());
         verify(fixture.reviewEngine, never()).analyze(any(), any());
-        verify(fixture.publication, never()).handoff(any(), any(), any());
+        verify(fixture.publication, never()).handoff(any(), any(), any(), any());
     }
 
     @Test
@@ -64,7 +67,7 @@ class RepositoryConfiguredReviewJobHandlerTest {
                 .isEqualTo(ReviewJobExecutionResult.Outcome.SUCCESS);
         verify(fixture.contextBuilder, never()).build(any(), any());
         verify(fixture.reviewEngine, never()).analyze(any(), any());
-        verify(fixture.publication, never()).handoff(any(), any(), any());
+        verify(fixture.publication, never()).handoff(any(), any(), any(), any());
     }
 
     @Test
@@ -77,7 +80,7 @@ class RepositoryConfiguredReviewJobHandlerTest {
                 .isEqualTo(ReviewJobExecutionResult.Outcome.SUCCESS);
         verify(fixture.contextBuilder, never()).build(any(), any());
         verify(fixture.reviewEngine, never()).analyze(any(), any());
-        verify(fixture.publication, never()).handoff(any(), any(), any());
+        verify(fixture.publication, never()).handoff(any(), any(), any(), any());
     }
 
     @Test
@@ -103,7 +106,7 @@ class RepositoryConfiguredReviewJobHandlerTest {
         assertThat(filtered.getValue().changedFiles()).extracting(ChangedFile::path)
                 .containsExactly("src/A.java");
         verify(fixture.reviewEngine).analyze(context, categories);
-        verify(fixture.publication, never()).handoff(any(), any(), any());
+        verify(fixture.publication, never()).handoff(any(), any(), any(), any());
     }
 
     @Test
@@ -128,6 +131,24 @@ class RepositoryConfiguredReviewJobHandlerTest {
         verify(fixture.loader, never()).load(any());
         verify(fixture.configLoader, never()).load(any());
         verify(fixture.reviewEngine, never()).analyze(any(), any());
+    }
+
+    @Test
+    void mismatchedTenantOwnershipStopsBeforeGitHubAiAndPublication() {
+        var fixture = fixture(snapshot(file("src/A.java")));
+        Instant now = Instant.parse("2026-09-09T12:00:00Z");
+        TenantContext mismatched = new TenantContext(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), 99, 2);
+        ClaimedReviewJob claim = new ClaimedReviewJob(UUID.randomUUID(), UUID.randomUUID(), 1, 3,
+                now, now.plusSeconds(60), TARGET, mismatched);
+
+        ReviewJobExecutionResult result = fixture.handler.handle(claim);
+
+        assertThat(result.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE);
+        assertThat(result.errorCode().value()).isEqualTo("TENANT_REPOSITORY_OWNERSHIP_MISMATCH");
+        verify(fixture.loader, never()).load(any());
+        verify(fixture.reviewEngine, never()).analyze(any(), any());
+        verify(fixture.publication, never()).handoff(any(), any(), any(), any());
     }
 
     private Fixture fixture(PullRequestSnapshot snapshot) {
@@ -162,7 +183,7 @@ class RepositoryConfiguredReviewJobHandlerTest {
     private ClaimedReviewJob claim() {
         Instant now = Instant.parse("2026-09-09T12:00:00Z");
         return new ClaimedReviewJob(UUID.randomUUID(), UUID.randomUUID(), 1, 3,
-                now, now.plusSeconds(60), TARGET);
+                now, now.plusSeconds(60), TARGET, TENANT_CONTEXT);
     }
 
     private record Fixture(
