@@ -120,6 +120,15 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 - Usage metadata is limited to bounded safe provider/model identifiers and optional nonnegative provider-reported token counts. Unknown stays unknown. Source, prompts, raw output, error bodies, credentials, authorization data, stack traces, and monetary calculations are excluded.
 - Release is an explicit monotonic state transition retained for auditability; there is no automatic expiry or deletion. Reconciliation, billing, invoices, plans, retention, and public usage APIs remain future security designs.
 
+### Frontend foundation controls implemented in M13A
+
+- The browser has no tenant authority. The dashboard shell is explicitly unauthenticated and receives no tenant, repository, review, publication, or usage data. M13B must resolve authorization from authenticated server context rather than a submitted tenant ID.
+- Backend origin configuration is server-only and protected with the React/Next `server-only` boundary. Production requires a credential-free HTTPS origin; path, query, fragment, unsupported scheme, and cross-origin escape are rejected. No backend request or generic proxy exists in M13A.
+- No GitHub credential, OpenAI key, webhook secret, installation token, database credential, or other product secret may use `NEXT_PUBLIC_*` or be serialized into Client Components.
+- A per-request unpredictable nonce authorizes framework scripts under production CSP. Production contains neither `unsafe-inline` nor `unsafe-eval`; development permits `unsafe-eval` only for framework tooling. Framing, objects, base URI, form actions, browser capabilities, MIME sniffing, and referrer disclosure are constrained.
+- Repository names, usernames, findings, statuses, provider metadata, and GitHub-derived values remain untrusted display text. React escaping is the default; raw HTML, `dangerouslySetInnerHTML`, dynamic code execution, DOM HTML injection, and arbitrary external fetching are prohibited.
+- Only error/reset boundaries are Client Components. User-facing error pages omit exception messages and sensitive diagnostic detail.
+
 ### AI transport controls implemented in M8
 
 - AI is disabled by default. Enabling OpenAI requires a runtime API key; the key is redacted by configuration objects and never logged, persisted, exposed through Actuator, or copied into errors.
