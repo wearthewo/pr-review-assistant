@@ -14,6 +14,8 @@ M15 adds fixed-clock unit tests for UTC month windows, quota bounds, safe metada
 
 M13A uses the Node test runner through a minimal TypeScript executor. Foundation tests server-render the root and dashboard pages, prove untrusted text is escaped, validate strict production/development CSP differences and attached response headers, exercise production backend-origin failure and URL rejection, assert the server-only import and absence of client-public secret variables, and scan production TSX for raw-HTML/dynamic-code patterns. Lint, strict TypeScript, lockfile installation, production build, dependency tree, and production vulnerability audit are separate required gates. Full browser E2E remains deferred until authenticated behavior exists.
 
+M13B extends those lightweight frontend tests with unauthenticated and membership-less rendering, server-only bearer forwarding, strict backend DTO validation, response/token redaction, blocked token/profile routes, fixed login destinations, Auth0 environment/session-cookie assertions, and preservation of CSP. Backend tests cryptographically exercise RS256 plus expiry, not-before, issuer, audience, wrong-signature, and unsigned rejection; MockMvc covers empty 401 behavior and safe session DTOs. PostgreSQL 18.6 tests cover `(issuer, subject)` identity, issuer namespace separation, concurrent first-login convergence, membership uniqueness/role/FKs, Tenant A/Tenant B denial, historical unowned tenants, and clean V1-to-V7 plus populated V6-to-V7 migration. No live Auth0 tenant is required.
+
 ## Test layers
 
 ### Unit tests
@@ -67,6 +69,8 @@ M12 security regressions treat configuration itself as hostile: unknown instruct
 M14 security regressions prove signed GitHub installation/repository IDs are authoritative, arbitrary tenant IDs are ignored, repository rename strings do not change identity, cross-tenant job/publication associations fail at the database boundary, ownership failures use bounded codes, and no GitHub retrieval, configuration fetch, AI invocation, or publication handoff occurs after a mismatch.
 
 M15 security regressions prove tenant-like quota/usage/plan/billing fields in webhooks and repository configuration have no authority, cross-tenant usage insertion and finalization fail closed, provider metadata is bounded, token values cannot be negative or overflow application limits, and string/error representations reveal no token counts or external content. Tests inspect the migration for the absence of source-content columns and ensure unknown measurements are not converted to zero.
+
+M13B security regressions prove invalid JWT classes fail, email is absent from identity storage, identical subjects under different issuers do not collide, concurrent logins create one user, and membership—not tenant UUID knowledge—authorizes. They also prove no token is rendered or persisted, Auth0 helper routes cannot expose it, backend error bodies are not propagated, unowned tenants fail closed, CSP remains strict, and browser storage/public-secret patterns are absent. Secure GitHub-backed first-membership bootstrap remains a later integration test because M13B intentionally exposes no such operation.
 
 ## Test data and doubles
 

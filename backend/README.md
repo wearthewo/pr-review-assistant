@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, internal tenant ownership, durable workers, bounded exact-revision context retrieval, safe repository configuration, a disabled-by-default structured AI provider boundary, candidate review analysis, deterministic false-positive suppression, durable GitHub review publication, and tenant-scoped analysis usage accounting. It contains no public tenant API, billing, user membership, or arbitrary repository traversal.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. It provides application startup, PostgreSQL connectivity, Flyway migrations, Hibernate schema validation, Actuator health, GitHub App authentication, secure webhook/job ingestion, internal tenant ownership, durable workers, bounded exact-revision context retrieval, safe repository configuration, a disabled-by-default structured AI provider boundary, candidate review analysis, deterministic false-positive suppression, durable GitHub review publication, tenant-scoped analysis usage accounting, and the M13B human identity/membership boundary. It contains no repository, review-history, usage, billing, or tenant-management dashboard API.
 
 ## Requirements
 
@@ -45,7 +45,15 @@ Check readiness at `http://localhost:8080/actuator/health`. Only the health Actu
 
 On Windows, run `.\mvnw.cmd clean verify`. Integration tests start their own pinned PostgreSQL container and do not use the local Compose database.
 
-Flyway owns schema changes. V1 creates `github_webhook_deliveries`; V2 creates `review_jobs`; V3 adds the exact GitHub review target and its uniqueness constraint; V4 adds `review_publications` and the separate leased `publication_jobs` queue; V5 adds tenant ownership; V6 adds tenant usage accounting. Earlier migrations remain immutable. Hibernate uses `ddl-auto: validate` and never creates or updates the schema.
+Flyway owns schema changes. V1 creates `github_webhook_deliveries`; V2 creates `review_jobs`; V3 adds the exact GitHub review target and its uniqueness constraint; V4 adds publication state; V5 adds tenant ownership; V6 adds tenant usage accounting; V7 adds `application_users` and `tenant_memberships`. Earlier migrations remain immutable. Hibernate uses `ddl-auto: validate` and never creates or updates the schema.
+
+## Dashboard authentication and authorization
+
+`GET /api/dashboard/session` is the only M13B dashboard API. It requires an Auth0 API access JWT. Configure `DASHBOARD_AUTH_ISSUER`, `DASHBOARD_AUTH_AUDIENCE`, and the same-origin HTTPS `DASHBOARD_AUTH_JWK_SET_URI`. Spring Security Resource Server accepts RS256 only and validates signature, expiry, not-before, issuer, and audience. Blank configuration fails closed for dashboard requests; partial or unsafe configuration fails startup. The endpoint returns only the internal application-user UUID, controlled membership roles, tenant UUIDs for actual memberships, and whether secure onboarding is required.
+
+External human identity is the bounded `(auth_issuer, auth_subject)` pair, never email. First-login provisioning uses PostgreSQL uniqueness and conflict-safe insertion, so concurrent requests converge on one user. Authorization resolves the verified identity to that internal user and then requires a `(tenant_id, user_id)` membership. Knowing a tenant UUID, GitHub installation/repository identifier, organization, or email never creates access. Historical tenants receive no fabricated membership and remain inaccessible until a future server-verified GitHub ownership flow binds them.
+
+The API is stateless bearer-token authenticated. It does not read browser cookies, so CSRF is disabled for this backend boundary; CORS is not enabled. Browser requests go through Next.js rather than directly to Spring. Tokens, issuer/subject claims, and SQL details are absent from response DTOs and safe authorization errors.
 
 ## GitHub App authentication
 
@@ -133,7 +141,7 @@ M14 resolves tenant ownership only after M3 signature verification and M5 schema
 
 `tenant_repositories` uses a composite foreign key to prove its installation belongs to the same tenant. New target-bearing `review_jobs` persist `tenant_id` and `tenant_repository_id`; new `review_publications` persist the same association and additionally use a composite foreign key to their analysis job's tenant. Publication queue rows reference exactly one tenant-owned publication. Repository owner/name remains authenticated routing metadata and does not affect ownership, so rename does not change identity. An attempted transfer or reassignment is rejected with a bounded ownership code until a later reconciliation workflow exists.
 
-No caller-supplied tenant UUID is accepted. Workers stop unresolved or mismatched target ownership before any GitHub, configuration, AI, or publication call. Publication retries load their immutable tenant association and never reprovision it. V5 leaves pre-M14 job/publication ownership nullable rather than fabricating unknown customer ownership; these historical rows cannot enter the tenant-required review/publication paths. Tenant status, uninstall handling, transfer reconciliation, RLS, public tenant endpoints, memberships, and billing are intentionally deferred.
+No caller-supplied tenant UUID is accepted. Workers stop unresolved or mismatched target ownership before any GitHub, configuration, AI, or publication call. Publication retries load their immutable tenant association and never reprovision it. V5 leaves pre-M14 job/publication ownership nullable rather than fabricating unknown customer ownership; these historical rows cannot enter the tenant-required review/publication paths. Tenant status, uninstall handling, transfer reconciliation, RLS, product tenant endpoints, secure membership bootstrap, and billing are intentionally deferred.
 
 ## Usage accounting and quotas
 

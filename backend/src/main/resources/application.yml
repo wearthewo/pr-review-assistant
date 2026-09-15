@@ -25,6 +25,12 @@ management:
     db:
       enabled: true
 
+dashboard:
+  auth:
+    issuer: ${DASHBOARD_AUTH_ISSUER:}
+    audience: ${DASHBOARD_AUTH_AUDIENCE:}
+    jwk-set-uri: ${DASHBOARD_AUTH_JWK_SET_URI:}
+
 github:
   app:
     id: ${GITHUB_APP_ID}

@@ -141,4 +141,59 @@ class PostgreSqlIntegrationTest {
             }
         }
     }
+
+    @Test
+    void v7PreservesPopulatedV6TenantWithoutInventingUsersOrMemberships() throws SQLException {
+        String schema = "m13b_history_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway throughV6 = Flyway.configure()
+                .dataSource(postgresqlContainer.getJdbcUrl(), postgresqlContainer.getUsername(),
+                        postgresqlContainer.getPassword())
+                .schemas(schema)
+                .defaultSchema(schema)
+                .target(MigrationVersion.fromVersion("6"))
+                .load();
+        throughV6.migrate();
+        UUID tenantId = UUID.randomUUID();
+        OffsetDateTime now = OffsetDateTime.of(2026, 9, 15, 12, 0, 0, 0, ZoneOffset.UTC);
+
+        try (Connection connection = DriverManager.getConnection(
+                postgresqlContainer.getJdbcUrl(), postgresqlContainer.getUsername(),
+                postgresqlContainer.getPassword())) {
+            connection.setSchema(schema);
+            try (var tenant = connection.prepareStatement(
+                    "INSERT INTO tenants (id, created_at, updated_at) VALUES (?, ?, ?)")) {
+                tenant.setObject(1, tenantId);
+                tenant.setObject(2, now);
+                tenant.setObject(3, now);
+                tenant.executeUpdate();
+            }
+        }
+
+        Flyway.configure()
+                .dataSource(postgresqlContainer.getJdbcUrl(), postgresqlContainer.getUsername(),
+                        postgresqlContainer.getPassword())
+                .schemas(schema)
+                .defaultSchema(schema)
+                .load()
+                .migrate();
+
+        try (Connection connection = DriverManager.getConnection(
+                postgresqlContainer.getJdbcUrl(), postgresqlContainer.getUsername(),
+                postgresqlContainer.getPassword())) {
+            connection.setSchema(schema);
+            try (var statement = connection.createStatement();
+                    var rows = statement.executeQuery("""
+                            SELECT (SELECT count(*) FROM tenants) AS tenants,
+                                   (SELECT count(*) FROM application_users) AS users,
+                                   (SELECT count(*) FROM tenant_memberships) AS memberships
+                            """)) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getLong("tenants")).isEqualTo(1);
+                assertThat(rows.getLong("users")).isZero();
+                assertThat(rows.getLong("memberships")).isZero();
+            } finally {
+                connection.createStatement().execute("DROP SCHEMA " + schema + " CASCADE");
+            }
+        }
+    }
 }
