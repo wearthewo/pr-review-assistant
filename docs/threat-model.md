@@ -2,7 +2,7 @@
 
 ## Scope
 
-This threat model covers the implemented path from GitHub webhooks through durable tenant ownership, processing, context retrieval, analysis, suppression, and disabled-by-default GitHub review publication, plus the future administrative frontend and software supply chain. User membership and tenant administration remain future scope.
+This threat model covers the implemented path from GitHub webhooks through durable tenant ownership, processing, context retrieval, analysis, suppression, and disabled-by-default GitHub review publication, plus the M13A frontend foundation and software supply chain. Frontend authentication, user membership, and tenant administration remain future scope.
 
 ## Assets
 
@@ -43,6 +43,11 @@ Trust boundaries exist between GitHub and webhook ingestion, clients and the fut
 | Crash around the provider call | The service cannot know whether a request was billed or a response was received | Commit the reservation before the call, never hold the database transaction across AI, keep uncertain reservations active and quota-consuming, and require a future explicit reconciliation policy before release |
 | Repository-controlled quota or usage state | Signed payload or base policy raises limits, changes plans, releases usage, or falsifies metadata | Keep limit and lifecycle transitions server-owned; ignore tenant/quota/usage/billing/plan fields in payloads and reject them from strict repository configuration |
 | Usage metadata leakage or falsification | Source, prompts, raw output, secrets, prices, or attacker strings enter durable accounting | Store only validated bounded provider/model identifiers and optional bounded numeric provider-reported measurements; retain null for unknown; expose aggregate completeness and never persist content or monetary amounts |
+| Browser-supplied tenant substitution | A future client submits another tenant ID and the backend treats it as authority | Expose no tenant data in M13A; M13B must derive tenant access from authenticated server-side context and validate authorization again at every backend operation |
+| Frontend secret exposure | Backend/GitHub/model/database credentials enter a client bundle or public environment variable | Keep the backend boundary server-only, prohibit product secrets in `NEXT_PUBLIC_*`, minimize Server-to-Client props, and scan production source/build behavior before release |
+| Frontend XSS through repository or model text | Attacker-controlled names, findings, statuses, or metadata execute in an administrator's browser | Render values as React text, prohibit raw HTML and dynamic code execution, sanitize any future rich format independently, and enforce nonce-based CSP without production unsafe directives |
+| Clickjacking or browser capability abuse | An attacker embeds the dashboard or accesses unnecessary device APIs | Set `frame-ancestors 'none'`, `X-Frame-Options: DENY`, a restrictive Permissions Policy, MIME-sniffing protection, and a bounded Referrer Policy |
+| Backend-origin or open-proxy abuse | Browser input or compromised configuration causes credentialed requests to an attacker host | Accept only a server-side configured credential-free HTTPS origin in production, reject URL components/escape, create no arbitrary proxy endpoint, and never accept a user-provided backend URL |
 | Prompt injection through repository contents | Source text persuades a model or agent to reveal data or bypass policy | Mark repository material as untrusted data, separate it from system policy, expose no ambient tools or secrets, minimize context, require structured output, and validate against independent policy |
 | Malicious diffs or repository data | Parser exploits, path tricks, excessive computation, terminal/log injection, or unsafe publication | Never execute code; validate encoding, paths, sizes, shapes, and output locations; use safe parsers; escape rendered content; isolate processing; impose time and resource bounds |
 | Malicious repository configuration or prompt injection through config | Repository selects hidden instructions, external resources, secrets, or weakened review policy | Accept only fixed versioned typed fields; never concatenate raw config into instructions; reject unknown fields and keep models, prompts, confidence, output, and publication policy operator-owned |
@@ -98,6 +103,7 @@ An external provider may be unavailable, slow, return malformed results, retain 
 - One tenant's workload and data are isolated from every other tenant.
 - Sensitive content is not required for routine observability.
 - Quota decisions and usage reads are tenant-scoped, concurrency-safe, and cannot be controlled by repository input.
+- The frontend cannot establish tenant identity, expose server secrets, render untrusted HTML, or fetch arbitrary origins.
 
 ## Residual risk and review triggers
 
@@ -120,5 +126,7 @@ M6 holds complete bounded snapshots only in process memory. This reduces durable
 M14 uses lazy signed-webhook provisioning because installation lifecycle events and user authentication are not implemented. This is race-safe and fail-closed, but repository transfers and App uninstalls require a future authenticated reconciliation/deactivation flow. Tenant/installation/repository status, RLS, retention/deletion, memberships, and billing remain open controls; no lifecycle state is invented without an authority that can maintain it.
 
 M15 prevents concurrent quota oversubscription and duplicate logical usage, but it cannot resolve the fundamental crash ambiguity between committing a reservation and learning a provider outcome. Keeping `RESERVED` active avoids duplicate paid calls and remains conservative for quota, but may strand capacity after a pre-call crash or lose a usable result after a post-call crash. Automated expiry would weaken safety because elapsed time does not prove the provider was not called. A future reconciliation workflow, operational audit/retention policy, plan/billing authority, and tenant-facing reporting are required before monetary billing. Provider SDK retries remain one logical review event; only usage metadata returned by the final successful provider result is available to this ledger.
+
+M13A's security headers and server-only module reduce browser attack surface but are not authentication or authorization. The dashboard route is publicly reachable and intentionally empty. M13B must add session security, CSRF protections where relevant, authenticated server-to-backend credentials, membership checks, login/error abuse controls, and logout/session-revocation behavior before any tenant data is exposed. Nonce-based CSP makes pages dynamically rendered and must be regression-tested whenever scripts, styles, analytics, or third-party origins are introduced.
 
 Review and update this model when adding an endpoint, permission, event type, data store, AI provider, executable analysis mechanism, deployment environment, tenant-facing feature, or material data-retention change, and after any security incident.

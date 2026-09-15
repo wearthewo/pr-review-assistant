@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. Milestone M15 adds tenant-scoped AI-analysis usage accounting and monthly quota enforcement.
+> Project status: **pre-alpha**. M13A adds the security-conscious Next.js frontend foundation; authentication and dashboard features remain unimplemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -33,13 +33,13 @@ The API and worker are logical components of the backend. PostgreSQL is the init
 - OpenAPI
 - OpenAI behind an internal provider abstraction
 
-The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App client, signed webhook ingestion, revision-specific jobs, bounded context retrieval, safe exact-revision repository configuration, an OpenAI Responses API adapter behind an internal structured-generation boundary, deterministic false-positive suppression, durable GitHub review publication, and tenant-scoped AI-analysis usage accounting. The frontend remains uninitialized.
+The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with Maven 3.9.16, PostgreSQL 18, Flyway, JPA, Actuator, Testcontainers, a narrow GitHub App client, signed webhook ingestion, revision-specific jobs, bounded context retrieval, safe exact-revision repository configuration, an OpenAI Responses API adapter behind an internal structured-generation boundary, deterministic false-positive suppression, durable GitHub review publication, and tenant-scoped AI-analysis usage accounting. The frontend foundation uses Node.js 24 LTS, Next.js 16.3.5, React 19.3.0, and strict TypeScript 5.9.3.
 
 ## Repository layout
 
 ```text
 backend/     Spring Boot foundation; future API and review worker
-frontend/    Future Next.js user interface
+frontend/    Next.js App Router foundation; future authenticated administration UI
 infra/       Local PostgreSQL Compose definition; future deployment definitions
 docs/        Product, architecture, security, testing, and development documentation
 docs/adr/    Accepted architecture decision records
@@ -86,7 +86,7 @@ After startup, `GET http://localhost:8080/actuator/health` is the operational en
 
 ## Current milestone
 
-M15 establishes a durable, tenant-scoped usage ledger and enforces a configurable UTC-calendar-month quota before an AI analysis invocation. One review job can own at most one logical `REVIEW_ANALYSIS` usage event. Reservations commit before the external call and are consumed afterward, so no database transaction spans AI work. No public usage API, billing, pricing, or payment functionality is introduced.
+M13A establishes the frontend build, route, accessibility, server/client, environment, and security-header foundations. The root route is a product entry page. `/dashboard` is explicitly an unauthenticated placeholder and exposes no tenant data. M13B authentication and every dashboard business feature remain deferred.
 
 The initial operator policy is confidence 85, minimum severity MEDIUM, and at most three publication candidates. Silence is better than a weak comment; zero accepted findings completes without a GitHub write.
 

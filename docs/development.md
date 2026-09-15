@@ -2,13 +2,14 @@
 
 ## Current state
 
-The repository is at Milestone M15. The backend is a Java 21 and Spring Boot 4.1.1 application with PostgreSQL, Flyway, JPA validation, Actuator, Testcontainers, GitHub App authentication, secure webhook/job ingestion, internal tenant ownership, leased analysis and publication workers, bounded exact-revision context, safe repository configuration, provider-neutral structured AI transport, deterministic suppression, durable GitHub review publication, and tenant-scoped analysis usage accounting. Local infrastructure contains PostgreSQL only. There is no public tenant/usage API, billing, user authentication, frontend, OpenAPI specification, or CI/CD workflow.
+The backend is complete through M15. M13A initializes a Node.js 24 LTS, Next.js 16.3.5, React 19.3.0, and TypeScript 5.9.3 frontend foundation. It contains no user authentication, public tenant/usage API, billing, dashboard data, OpenAPI specification, CI/CD workflow, or deployment definition.
 
 ## Prerequisites
 
 - Java 21 JDK available through `JAVA_HOME` or `PATH`
 - Docker with Docker Compose
 - Git
+- Node.js 24 LTS and npm 11.19.1 for frontend work
 
 The backend includes Maven Wrapper 3.3.4 pinned to Maven 3.9.16, so a global Maven installation is unnecessary. The local and test database image is PostgreSQL `18.6-bookworm`.
 
@@ -42,6 +43,19 @@ Set-Location backend
 ```
 
 The health endpoint is `http://localhost:8080/actuator/health`. The database health contributor is enabled, only the health endpoint is exposed over HTTP, and details are hidden.
+
+## Local frontend workflow
+
+From `frontend`, use the committed lockfile:
+
+```sh
+npm ci
+npm run dev
+```
+
+Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` before claiming frontend completion. The current routes make no backend request. `BACKEND_BASE_URL` is server-only; development/test default to `http://127.0.0.1:8080`, while production use requires an explicit HTTPS origin. Do not add backend or product credentials to `NEXT_PUBLIC_*`.
+
+Production CSP uses a fresh request nonce and permits neither `unsafe-inline` nor `unsafe-eval`. Development permits `unsafe-eval` only for Next.js tooling and still rejects inline scripts. The proxy also sets MIME-sniffing, referrer, permissions, and framing controls. This security proxy is not authentication: M13B must authorize every server-side data operation from verified session context, never a browser tenant ID.
 
 Stop local infrastructure from the repository root without deleting the named volume:
 

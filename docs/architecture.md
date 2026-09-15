@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. At M15, the Spring Boot/PostgreSQL foundation, GitHub App authentication, durable webhook/job lifecycle, explicit tenant ownership, bounded exact-revision context, safe repository configuration, structured AI transport, candidate review analysis, deterministic finding suppression, durable GitHub review publication, and tenant-scoped analysis usage accounting exist.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M15. M13A additionally establishes the Next.js frontend runtime and security boundary without authentication or tenant-facing features.
 
 ## System context
 
@@ -91,7 +91,11 @@ Before a POST the durable publication becomes `AMBIGUOUS`. An uncertain outcome 
 
 ### Frontend
 
-Will provide tenant administrators with configuration, status, and operational visibility. It never receives GitHub installation tokens or model credentials and accesses backend capabilities only through explicit authenticated APIs.
+M13A provides a Next.js 16 App Router shell that defaults to Server Components, with Client Components limited to framework error/reset interaction. A server-only module owns the configured backend HTTPS origin and rejects credentials, paths, queries, fragments, and cross-origin URL escape. It performs no backend call yet and exposes no generic proxy.
+
+The browser is never a tenant authority. M13B must derive identity and allowed tenant ownership from authenticated server-side context before any product API is introduced; browser-supplied tenant IDs remain untrusted. GitHub, OpenAI, webhook, and database secrets never enter the frontend or `NEXT_PUBLIC_*` configuration.
+
+The request boundary generates a fresh CSP nonce and attaches strict production headers. React text escaping remains the display baseline for future untrusted repository and GitHub-derived data. M13A contains only `/`, an explicitly unauthenticated `/dashboard` shell, and loading/error/not-found foundations. Configuration, status, repositories, reviews, usage, billing, and observability remain future scope.
 
 ### Infrastructure and delivery
 
@@ -114,7 +118,7 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, internal tenant/installation/repository ownership, disabled-by-default job pollers, exact-revision repository configuration, a disabled-by-default AI adapter/review engine, deterministic finding suppression, durable review publication, and tenant usage accounting. Database locks, constraints, claim tokens, and tenant/month quota locks make provisioning, work ownership, and quota decisions safe across processes. PostgreSQL stores ownership UUIDs, webhook envelopes, immutable targets, usage states with bounded operational metadata, and only the sanitized accepted user-facing publication payload plus routing metadata. It stores no credentials, fetched context, repository configuration, prompts, raw AI responses, rejected findings, patches, prices, or suppression content. The frontend and deployment topology remain undecided.
+The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, internal tenant/installation/repository ownership, disabled-by-default job pollers, exact-revision repository configuration, a disabled-by-default AI adapter/review engine, deterministic finding suppression, durable review publication, and tenant usage accounting. Database locks, constraints, claim tokens, and tenant/month quota locks make provisioning, work ownership, and quota decisions safe across processes. PostgreSQL stores ownership UUIDs, webhook envelopes, immutable targets, usage states with bounded operational metadata, and only the sanitized accepted user-facing publication payload plus routing metadata. It stores no credentials, fetched context, repository configuration, prompts, raw AI responses, rejected findings, patches, prices, or suppression content. The frontend is a separate Next.js process boundary with no backend request yet; deployment topology remains undecided.
 
 ## Decision records
 

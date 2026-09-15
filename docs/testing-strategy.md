@@ -12,6 +12,8 @@ M14 adds PostgreSQL-backed tenant/installation/repository provisioning, external
 
 M15 adds fixed-clock unit tests for UTC month windows, quota bounds, safe metadata, unknown/partial token totals, and tenant-context enforcement. PostgreSQL 18.6 integration tests cover reservation/consumption/release, review-job idempotency, same-tenant foreign keys, direct uniqueness, populated V5-to-V6 migration, and tenant-scoped summaries. Barrier-based concurrency tests prove same-job single reservation and no quota oversubscription for many distinct jobs. Worker tests prove quota denial and ambiguous retries make zero AI calls, successful and post-provider-invalid outputs consume once, no-AI paths create no usage, and publication retries make no usage call.
 
+M13A uses the Node test runner through a minimal TypeScript executor. Foundation tests server-render the root and dashboard pages, prove untrusted text is escaped, validate strict production/development CSP differences and attached response headers, exercise production backend-origin failure and URL rejection, assert the server-only import and absence of client-public secret variables, and scan production TSX for raw-HTML/dynamic-code patterns. Lint, strict TypeScript, lockfile installation, production build, dependency tree, and production vulnerability audit are separate required gates. Full browser E2E remains deferred until authenticated behavior exists.
+
 ## Test layers
 
 ### Unit tests
