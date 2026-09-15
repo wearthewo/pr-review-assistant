@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. M13A adds the security-conscious Next.js frontend foundation; authentication and dashboard features remain unimplemented.
+> Project status: **pre-alpha**. M13B adds human authentication and tenant-membership authorization; product dashboard features remain unimplemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -86,7 +86,9 @@ After startup, `GET http://localhost:8080/actuator/health` is the operational en
 
 ## Current milestone
 
-M13A establishes the frontend build, route, accessibility, server/client, environment, and security-header foundations. The root route is a product entry page. `/dashboard` is explicitly an unauthenticated placeholder and exposes no tenant data. M13B authentication and every dashboard business feature remain deferred.
+M13B uses Auth0 Universal Login as one production-capable OIDC path. Next.js keeps the encrypted session in an HttpOnly cookie and obtains access tokens only on the server. It calls `GET /api/dashboard/session` with `Authorization: Bearer`; Spring independently validates RS256 signature, expiry/not-before, issuer, and audience before provisioning an internal user keyed by `(issuer, subject)` and resolving durable tenant memberships. The browser never supplies an authoritative tenant identity.
+
+Historical tenants remain valid but unowned for dashboard purposes. No user is automatically attached from a tenant UUID, installation ID, repository ID/name, organization, email, or domain. An authenticated user without a server-verified membership sees a closed onboarding state and no tenant data. A future GitHub-authorized ownership proof is required to create the first membership; repository, review-history, usage, billing, and tenant-management screens remain deferred.
 
 The initial operator policy is confidence 85, minimum severity MEDIUM, and at most three publication candidates. Silence is better than a weak comment; zero accepted findings completes without a GitHub write.
 
@@ -96,7 +98,7 @@ M11 renders accepted findings into one `COMMENT` review tied to the exact head S
 
 GitHub numeric installation and repository IDs are the only external ownership authorities. Owner/name strings, webhook sender fields, repository content, `.reviewbot.yml`, and supplied tenant-like fields never select an internal tenant. First use creates the tenant, installation, and repository mappings in one transaction; PostgreSQL advisory locks plus unique and composite foreign-key constraints make concurrent provisioning converge on one mapping and prevent cross-tenant reassignment.
 
-Review jobs carry the resolved tenant and internal repository association. Workers reject unresolved or mismatched ownership before GitHub retrieval, configuration loading, AI, or publication. Publications retain the same tenant association as their analysis job, and publication-only retries reuse persisted ownership without reprovisioning. Historical pre-M14 jobs/publications keep nullable ownership during this safe transition and cannot execute tenant-required production paths. Installation removal, repository transfer reconciliation, tenant suspension, RLS, retention, memberships, and billing remain deferred.
+Review jobs carry the resolved tenant and internal repository association. Workers reject unresolved or mismatched ownership before GitHub retrieval, configuration loading, AI, or publication. Publications retain the same tenant association as their analysis job, and publication-only retries reuse persisted ownership without reprovisioning. Historical pre-M14 jobs/publications keep nullable ownership during this safe transition and cannot execute tenant-required production paths. Installation removal, repository transfer reconciliation, tenant suspension, RLS, retention, secure membership bootstrap, and billing remain deferred.
 
 ## Repository review configuration
 

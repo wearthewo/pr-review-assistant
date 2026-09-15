@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M15. M13A additionally establishes the Next.js frontend runtime and security boundary without authentication or tenant-facing features.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M15. M13B adds the human OIDC identity and tenant-membership authorization foundation without tenant-facing product features.
 
 ## System context
 
@@ -36,6 +36,8 @@ Maps authoritative GitHub installation and repository numeric IDs to application
 ### API and application boundary
 
 Owns use-case coordination, authorization, tenant context, and transaction boundaries. It translates inbound requests into domain operations and exposes intentionally documented contracts. HTTP, persistence, and provider-specific types remain at adapters rather than becoming domain concepts.
+
+The dashboard sub-boundary independently validates Auth0 RS256 access JWTs in Spring, maps the trusted issuer/subject pair to an internal application user, and resolves tenant authorization only through durable membership. `AuthorizedTenantContext` can be created only by that membership lookup; a requested tenant UUID identifies a resource but never proves access. GitHub webhook identity remains separate from human identity.
 
 ### PostgreSQL system of record and job queue
 
@@ -91,11 +93,11 @@ Before a POST the durable publication becomes `AMBIGUOUS`. An uncertain outcome 
 
 ### Frontend
 
-M13A provides a Next.js 16 App Router shell that defaults to Server Components, with Client Components limited to framework error/reset interaction. A server-only module owns the configured backend HTTPS origin and rejects credentials, paths, queries, fragments, and cross-origin URL escape. It performs no backend call yet and exposes no generic proxy.
+The Next.js 16 App Router defaults to Server Components. Auth0 Universal Login owns OIDC state/PKCE and an encrypted HttpOnly browser session. Auth configuration and access tokens remain in `server-only` modules; the dashboard server obtains a token and calls Spring with bearer authentication. Spring does not trust the Next.js login assertion and validates the token independently. The access-token/profile SDK routes are unavailable, and no generic proxy exists.
 
-The browser is never a tenant authority. M13B must derive identity and allowed tenant ownership from authenticated server-side context before any product API is introduced; browser-supplied tenant IDs remain untrusted. GitHub, OpenAI, webhook, and database secrets never enter the frontend or `NEXT_PUBLIC_*` configuration.
+The browser is never a tenant authority. A verified `(issuer, subject)` resolves to an application user, then a membership, then an authorized tenant. Historical/unowned tenants are invisible; secure ownership binding is deferred rather than inferred from browser values, email, or GitHub identifiers. GitHub, OpenAI, auth client, webhook, and database secrets never enter `NEXT_PUBLIC_*` configuration or Client Components.
 
-The request boundary generates a fresh CSP nonce and attaches strict production headers. React text escaping remains the display baseline for future untrusted repository and GitHub-derived data. M13A contains only `/`, an explicitly unauthenticated `/dashboard` shell, and loading/error/not-found foundations. Configuration, status, repositories, reviews, usage, billing, and observability remain future scope.
+The request boundary generates a fresh CSP nonce and attaches strict production headers. React text escaping remains the display baseline. M13B contains only `/`, authentication routes, a minimal `/dashboard` session/onboarding shell, and loading/error/not-found foundations. Configuration, repositories, reviews, usage, billing, and observability remain future scope.
 
 ### Infrastructure and delivery
 
@@ -118,8 +120,8 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, internal tenant/installation/repository ownership, disabled-by-default job pollers, exact-revision repository configuration, a disabled-by-default AI adapter/review engine, deterministic finding suppression, durable review publication, and tenant usage accounting. Database locks, constraints, claim tokens, and tenant/month quota locks make provisioning, work ownership, and quota decisions safe across processes. PostgreSQL stores ownership UUIDs, webhook envelopes, immutable targets, usage states with bounded operational metadata, and only the sanitized accepted user-facing publication payload plus routing metadata. It stores no credentials, fetched context, repository configuration, prompts, raw AI responses, rejected findings, patches, prices, or suppression content. The frontend is a separate Next.js process boundary with no backend request yet; deployment topology remains undecided.
+The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, internal tenant/installation/repository ownership, human identity/membership authorization, disabled-by-default job pollers, exact-revision repository configuration, a disabled-by-default AI adapter/review engine, deterministic finding suppression, durable review publication, and tenant usage accounting. Database locks, constraints, claim tokens, and tenant/month quota locks make provisioning, work ownership, and quota decisions safe across processes. PostgreSQL stores ownership UUIDs, webhook envelopes, immutable targets, usage states with bounded operational metadata, and only the sanitized accepted user-facing publication payload plus routing metadata. It stores no credentials, fetched context, repository configuration, prompts, raw AI responses, rejected findings, patches, prices, or suppression content. The frontend is a separate Next.js process boundary and calls only the protected session endpoint server-to-server; deployment topology remains undecided.
 
 ## Decision records
 
-Accepted foundational decisions are recorded in [docs/adr](adr): monorepo ownership, GitHub App authentication, a PostgreSQL-backed queue, and an internal AI provider abstraction. Material changes require a new superseding ADR.
+Accepted foundational decisions are recorded in [docs/adr](adr), including the M13B OIDC/server-mediated dashboard authentication decision. Material changes require a new superseding ADR.

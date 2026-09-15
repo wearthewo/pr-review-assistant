@@ -147,6 +147,8 @@ h2 { font-size: clamp(2rem, 4vw, 3.4rem); }
 .empty-panel { max-width: 720px; margin: 5rem auto; padding: clamp(1.5rem, 5vw, 3.5rem); border: 1px solid var(--border); border-radius: 1rem; background: var(--surface-strong); box-shadow: var(--shadow); }
 .empty-panel h1, .centered-state h1 { font-size: clamp(2.1rem, 5vw, 3.8rem); }
 .muted { color: var(--muted); }
+.membership-list { display: grid; gap: 0.6rem; margin: 1.5rem 0; padding: 0; list-style: none; }
+.membership-list li { display: flex; justify-content: space-between; gap: 1rem; padding: 0.8rem; border: 1px solid var(--border); border-radius: 0.6rem; }
 
 .centered-state {
   display: grid;

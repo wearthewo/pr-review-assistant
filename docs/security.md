@@ -122,12 +122,23 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 
 ### Frontend foundation controls implemented in M13A
 
-- The browser has no tenant authority. The dashboard shell is explicitly unauthenticated and receives no tenant, repository, review, publication, or usage data. M13B must resolve authorization from authenticated server context rather than a submitted tenant ID.
-- Backend origin configuration is server-only and protected with the React/Next `server-only` boundary. Production requires a credential-free HTTPS origin; path, query, fragment, unsupported scheme, and cross-origin escape are rejected. No backend request or generic proxy exists in M13A.
+- The M13A browser foundation grants no tenant authority. M13B now resolves authorization from authenticated server context rather than a submitted tenant ID; unauthenticated rendering still receives no tenant, repository, review, publication, or usage data.
+- Backend origin configuration is server-only and protected with the React/Next `server-only` boundary. Production requires a credential-free HTTPS origin; path, query, fragment, unsupported scheme, and cross-origin escape are rejected. M13B uses that narrow origin only for its fixed session request and still exposes no generic proxy.
 - No GitHub credential, OpenAI key, webhook secret, installation token, database credential, or other product secret may use `NEXT_PUBLIC_*` or be serialized into Client Components.
 - A per-request unpredictable nonce authorizes framework scripts under production CSP. Production contains neither `unsafe-inline` nor `unsafe-eval`; development permits `unsafe-eval` only for framework tooling. Framing, objects, base URI, form actions, browser capabilities, MIME sniffing, and referrer disclosure are constrained.
 - Repository names, usernames, findings, statuses, provider metadata, and GitHub-derived values remain untrusted display text. React escaping is the default; raw HTML, `dangerouslySetInnerHTML`, dynamic code execution, DOM HTML injection, and arbitrary external fetching are prohibited.
 - Only error/reset boundaries are Client Components. User-facing error pages omit exception messages and sensitive diagnostic detail.
+
+### Human authentication and tenant authorization controls implemented in M13B
+
+- Auth0 Universal Login provides one OIDC path; the application implements no passwords, reset flow, MFA store, or authentication cryptography. Auth0-specific frontend code remains at the session boundary.
+- Next.js stores session material in SDK-managed encrypted HttpOnly cookies with `SameSite=Lax` and `Secure` in production. Access and refresh tokens are absent from browser storage, Client Component props, HTML, URLs, logs, and the product database. Browser access-token/profile SDK routes are disabled and blocked.
+- Spring is a separate OAuth2 Resource Server trust boundary. It accepts RS256 only and validates signature, required expiry, not-before, issuer, and audience. Missing or invalid bearer credentials produce empty 401 responses; configuration fails closed.
+- Human identity is the bounded trusted `(issuer, subject)` pair. Email is neither persisted nor used for identity. A unique database constraint plus conflict-safe insert makes concurrent first login converge on one internal UUID.
+- Tenant access requires a durable unique membership with controlled `OWNER` or `MEMBER` role. Requested tenant IDs only identify data; membership proves authorization. Unknown, cross-tenant, and historically unowned tenants fail with the same bounded denial.
+- No automatic ownership bootstrap exists. Installation IDs, repository IDs/names, organizations, domains, emails, and tenant UUIDs cannot create membership. A later flow must verify GitHub ownership server-side.
+- Browser traffic terminates at Next.js and Next.js calls Spring server-to-server. No broad CORS is enabled. Spring's dashboard API is stateless bearer authenticated and consumes no cookies, so CSRF is disabled there.
+- M13B adds no application state-changing browser endpoint. Auth0 retains state/PKCE and callback protections, login return destinations are fixed, and future cookie-authenticated mutations must enforce origin/fetch metadata plus CSRF tokens where appropriate. GET never mutates product state.
 
 ### AI transport controls implemented in M8
 

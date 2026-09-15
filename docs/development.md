@@ -2,7 +2,7 @@
 
 ## Current state
 
-The backend is complete through M15. M13A initializes a Node.js 24 LTS, Next.js 16.3.5, React 19.3.0, and TypeScript 5.9.3 frontend foundation. It contains no user authentication, public tenant/usage API, billing, dashboard data, OpenAPI specification, CI/CD workflow, or deployment definition.
+The backend is complete through M15. M13B adds Auth0 OIDC authentication, durable application users/memberships, and a minimal protected dashboard-session path to the Node.js 24 LTS / Next.js 16.3.5 frontend. It contains no repository/review/usage dashboard, secure tenant-claim workflow, billing, CI/CD workflow, or deployment definition.
 
 ## Prerequisites
 
@@ -53,9 +53,13 @@ npm ci
 npm run dev
 ```
 
-Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` before claiming frontend completion. The current routes make no backend request. `BACKEND_BASE_URL` is server-only; development/test default to `http://127.0.0.1:8080`, while production use requires an explicit HTTPS origin. Do not add backend or product credentials to `NEXT_PUBLIC_*`.
+Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` before claiming frontend completion. `BACKEND_BASE_URL` is server-only; development/test default to `http://127.0.0.1:8080`, while production requires an explicit HTTPS origin. Configure Auth0 using the server-only variables in `.env.example`; generate `AUTH0_SECRET` with 32 random bytes encoded as 64 hexadecimal characters. No auth or product secret may use `NEXT_PUBLIC_*`.
 
-Production CSP uses a fresh request nonce and permits neither `unsafe-inline` nor `unsafe-eval`. Development permits `unsafe-eval` only for Next.js tooling and still rejects inline scripts. The proxy also sets MIME-sniffing, referrer, permissions, and framing controls. This security proxy is not authentication: M13B must authorize every server-side data operation from verified session context, never a browser tenant ID.
+Production CSP uses a fresh request nonce and permits neither `unsafe-inline` nor `unsafe-eval`. Development permits `unsafe-eval` only for Next.js tooling. The same proxy dispatches the restricted Auth0 routes, rejects non-fixed login return targets, and preserves the M13A headers. `/dashboard` uses the server session to call Spring; tokens must stay in server-only modules.
+
+The backend requires `DASHBOARD_AUTH_ISSUER`, `DASHBOARD_AUTH_AUDIENCE`, and `DASHBOARD_AUTH_JWK_SET_URI`. The issuer and JWK URI must be same-origin HTTPS (loopback HTTP is test/local only). Keep the configured audience identical to `AUTH0_AUDIENCE`. Blank auth configuration leaves dashboard requests closed; partial configuration prevents startup. The browser must not call Spring directly and no CORS allowance is needed.
+
+M13B intentionally has no membership creation API. Existing tenants are not assigned on login. Until a future server-verified GitHub ownership proof creates a membership, authenticated users receive only the onboarding-required state. Never bootstrap with email/domain matching or a submitted tenant, installation, repository, or organization identifier.
 
 Stop local infrastructure from the repository root without deleting the named volume:
 
