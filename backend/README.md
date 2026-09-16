@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. In addition to the review pipeline and M13B identity boundary, M13D1 provides a narrow server-side GitHub user-authorization flow that can bind verified personal installations to existing tenant memberships. It contains no repository, review-history, usage, billing, or tenant-management dashboard API.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. In addition to the review pipeline and authenticated ownership boundary, M13D2 provides a narrow read-only tenant-repository dashboard API. It contains no repository mutation, review-history, usage, billing, or tenant-management dashboard API.
 
 ## Requirements
 
@@ -54,6 +54,8 @@ Flyway owns schema changes. V1-V7 retain their accepted responsibilities; V8 add
 External human identity is the bounded `(auth_issuer, auth_subject)` pair, never email. First-login provisioning uses PostgreSQL uniqueness and conflict-safe insertion, so concurrent requests converge on one user. Authorization resolves the verified identity to that internal user and then requires a `(tenant_id, user_id)` membership. Knowing a tenant UUID, GitHub installation/repository identifier, organization, or email never creates access. Historical tenants receive no fabricated membership and remain inaccessible unless M13D1 independently verifies exact personal-installation ownership; organization ownership proof remains deferred.
 
 The API is stateless bearer-token authenticated. It does not read browser cookies, so CSRF is disabled for this backend boundary; CORS is not enabled. Browser requests go through Next.js rather than directly to Spring. Tokens, issuer/subject claims, and SQL details are absent from response DTOs and safe authorization errors.
+
+`GET /api/dashboard/tenants/{tenantId}/repositories` requires the same bearer authentication and independently invokes membership authorization for the path tenant before querying. The UUID identifies the requested workspace but never proves access. Unknown, foreign, and historical unowned tenants receive the same non-enumerating denial. The query reads at most 101 rows ordered by numeric GitHub repository ID, returns no more than 100, and exposes an explicit `truncated` flag. Each repository DTO contains only `repositoryId` and `connectedAt`; names, account, visibility, activation, configuration, and metrics are not present in M14 storage. The endpoint performs no GitHub request and no AI call.
 
 ## GitHub ownership bootstrap
 

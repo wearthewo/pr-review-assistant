@@ -2,7 +2,7 @@
 
 ## Scope
 
-This threat model covers the implemented path from GitHub webhooks through durable tenant ownership, processing, context retrieval, analysis, suppression, and disabled-by-default GitHub review publication, plus M13B human authentication/membership authorization and the software supply chain. Tenant ownership claiming and product dashboard administration remain future scope.
+This threat model covers the implemented path from GitHub webhooks through durable tenant ownership, processing, context retrieval, analysis, suppression, and disabled-by-default GitHub review publication, plus human authentication/membership authorization, secure personal-installation claiming, the read-only repository dashboard, and the software supply chain. Repository mutation and broader dashboard administration remain future scope.
 
 ## Assets
 
@@ -48,6 +48,8 @@ Trust boundaries exist between GitHub and webhook ingestion, clients and the fut
 | Stolen or leaked browser session/token | Account takeover or durable credential disclosure | Use SDK-managed encrypted HttpOnly, SameSite cookies with production Secure; keep access/refresh tokens server-only, disable browser token endpoints, emit no token to HTML/logs/URLs/database, and rely on provider revocation/expiry |
 | Auth subject collision or email identity takeover | One external account is confused with another | Key application users uniquely by bounded trusted `(issuer, subject)`; never use email as identity and preserve issuer namespace separation |
 | Tenant UUID enumeration or cross-tenant IDOR | Tenant A reads Tenant B by guessing its UUID | Treat the UUID only as resource identification; authorize through the verified user's durable membership and return a generic non-enumerating denial for absent, foreign, or unowned tenants |
+| Repository dashboard IDOR | A member supplies another tenant, repository, or installation identifier to read its repository list | Reauthorize the requested tenant at the Spring endpoint from verified identity and durable membership, query only by the authorized tenant, return an allowlisted bounded DTO, and use the same denial for foreign, unknown, and unowned tenants |
+| Stale or fabricated repository dashboard state | The UI implies GitHub state, activation, configuration, or metrics not held durably | Use M14 PostgreSQL ownership as the explicit read model, disclose its freshness limitation, display only persisted numeric identity and first-recorded time, and make zero live GitHub/AI calls during ordinary rendering |
 | Forged setup installation or browser tenant claim | A user submits a victim `installation_id`, tenant UUID, role, repository, or organization | Ignore setup identifiers; derive candidates only from authenticated GitHub APIs and derive tenants only from M14 server-side mappings |
 | Installation access confused with ownership | A collaborator or organization member appears in `/user/installations` and is promoted to owner | Grant initial `OWNER` only for personal `User` installations whose numeric account ID equals the verified numeric GitHub user; organization installs fail closed |
 | OAuth account-linking CSRF, substitution, or replay | An attacker starts or reuses another user's callback | Use high-entropy hashed state bound to the Auth0 application user, S256 PKCE, expiry, atomic consumption, same-origin start POST, bounded callback inputs, and fixed redirects |

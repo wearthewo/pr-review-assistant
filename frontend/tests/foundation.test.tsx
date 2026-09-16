@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import HomePage from "@/app/page";
 import { DashboardView } from "@/components/dashboard-view";
 import { DisplayText } from "@/components/display-text";
+import { RepositoriesView, RepositoryList } from "@/components/repositories-view";
 import { resolveAuthEnvironment } from "@/lib/auth-environment-validation";
 import { resolveBackendOrigin } from "@/lib/backend-origin-validation";
 import {
@@ -17,6 +18,10 @@ import {
   type AuthenticatedDashboardSession,
 } from "@/lib/dashboard-session-core";
 import { selectAuthorizedTenant } from "@/lib/dashboard-selection";
+import {
+  DashboardRepositoryError,
+  requestDashboardRepositories,
+} from "@/lib/dashboard-repositories-core";
 import {
   connectionMessage,
   dashboardPathForConnectionResult,
@@ -278,13 +283,101 @@ test("overview renders no fabricated repository review or usage metrics", () => 
   assert.match(html, /no fabricated repository, review, or usage totals/);
 });
 
-test("deferred navigation is accessible but cannot perform business actions", () => {
+test("repository navigation is functional while later sections remain deferred", () => {
   const html = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
     applicationUserId: USER_ID, memberships: [{ tenantId: TENANT_ID, role: "MEMBER" }],
     onboardingRequired: false }} />);
   assert.match(html, /aria-current="page"[^>]*>Overview/);
-  assert.match(html, /aria-disabled="true">Repositories/);
-  assert.doesNotMatch(html, /href="\/dashboard\/(?:repositories|reviews|usage|settings)"/);
+  assert.match(html, /href="\/dashboard\/repositories"[^>]*>Repositories/);
+  assert.doesNotMatch(html, /href="\/dashboard\/(?:reviews|usage|settings)"/);
+});
+
+test("repositories route gates unauthenticated and unbound users without repository data", () => {
+  const unauthenticated = renderToStaticMarkup(<RepositoriesView state={{ status: "gate",
+    dashboard: { status: "unauthenticated" } }} />);
+  const unbound = renderToStaticMarkup(<RepositoriesView state={{ status: "gate", dashboard: {
+    status: "authenticated", applicationUserId: USER_ID, memberships: [], onboardingRequired: true,
+  } }} />);
+  assert.match(unauthenticated, /Sign in to your dashboard/);
+  assert.match(unbound, /Connect your GitHub workspace next/);
+  assert.doesNotMatch(`${unauthenticated}${unbound}`, /GitHub repository|#123456/);
+});
+
+test("authorized repository DTO renders truthfully with active navigation and no fake status", () => {
+  const html = renderToStaticMarkup(<RepositoriesView state={{ status: "ready", selectedTenantId: TENANT_ID,
+    dashboard: { status: "authenticated", applicationUserId: USER_ID,
+      memberships: [{ tenantId: TENANT_ID, role: "MEMBER" }], onboardingRequired: false },
+    repositories: { repositories: [{ repositoryId: 123456,
+      connectedAt: "2026-09-16T12:00:00Z" }], truncated: false },
+  }} />);
+  assert.match(html, /aria-current="page"[^>]*>Repositories/);
+  assert.match(html, /#123456/);
+  assert.match(html, /2026-09-16 UTC/);
+  assert.match(html, /MEMBER/);
+  assert.doesNotMatch(html, /Enabled|Active|review count|findings|health|score|monthly usage|AI spend/i);
+  assert.match(html, /aria-disabled="true">Reviews/);
+  assert.match(html, /aria-disabled="true">Usage/);
+  assert.match(html, /aria-disabled="true">Settings/);
+});
+
+test("repository empty and bounded states are explicit", () => {
+  const empty = renderToStaticMarkup(<RepositoryList tenantId={TENANT_ID}
+    page={{ repositories: [], truncated: false }} />);
+  const bounded = renderToStaticMarkup(<RepositoryList tenantId={TENANT_ID}
+    page={{ repositories: [{ repositoryId: 1, connectedAt: "2026-09-16T12:00:00Z" }], truncated: true }} />);
+  assert.match(empty, /No repositories are currently known/);
+  assert.match(empty, /does not query GitHub or invent sample data/);
+  assert.match(bounded, /Showing the first 100 repositories/);
+});
+
+test("invalid tenant selection and repository authorization failures fail closed", () => {
+  const dashboard = { status: "authenticated" as const, applicationUserId: USER_ID,
+    memberships: [{ tenantId: TENANT_ID, role: "OWNER" as const }], onboardingRequired: false };
+  const invalid = renderToStaticMarkup(<RepositoriesView state={{ status: "invalid-tenant", dashboard }} />);
+  const denied = renderToStaticMarkup(<RepositoriesView state={{ status: "repository-error", dashboard,
+    selectedTenantId: TENANT_ID, kind: "AUTHORIZATION_FAILED" }} />);
+  assert.match(invalid, /That workspace cannot be opened/);
+  assert.match(denied, /could not be authorized/);
+  assert.doesNotMatch(`${invalid}${denied}`, /#\d{3,}/);
+});
+
+test("repository client validates bounds, ordering and keeps the bearer token server-side", async () => {
+  const secretToken = "repository-server-token";
+  let authorization = "";
+  const result = await requestDashboardRepositories(new URL("https://backend.example/repositories"), secretToken,
+    async (_input, init) => {
+      authorization = new Headers(init?.headers).get("Authorization") ?? "";
+      return new Response(JSON.stringify({ repositories: [
+        { repositoryId: 10, connectedAt: "2026-09-16T12:00:00Z", name: "<script>steal()</script>" },
+      ], truncated: false }), { status: 200 });
+    });
+  assert.equal(authorization, `Bearer ${secretToken}`);
+  assert.deepEqual(result.repositories, [{ repositoryId: 10, connectedAt: "2026-09-16T12:00:00Z" }]);
+  const html = renderToStaticMarkup(<RepositoryList tenantId={TENANT_ID} page={result} />);
+  assert.doesNotMatch(html, /script|steal|repository-server-token/i);
+
+  await assert.rejects(requestDashboardRepositories(new URL("https://backend.example/repositories"), secretToken,
+    async () => new Response(JSON.stringify({ repositories: [
+      { repositoryId: 2, connectedAt: "2026-09-16T12:00:00Z" },
+      { repositoryId: 1, connectedAt: "2026-09-16T12:00:00Z" },
+    ], truncated: false }), { status: 200 })),
+  (error: DashboardRepositoryError) => error.kind === "BACKEND_RESPONSE_INVALID" && !error.toString().includes(secretToken));
+});
+
+test("repository timeout unavailable malformed and oversized responses are safely classified", async () => {
+  const url = new URL("https://backend.example/repositories");
+  const token = "never-expose-repository-token";
+  await assert.rejects(requestDashboardRepositories(url, token, async () => {
+    throw new DOMException("timed out", "TimeoutError");
+  }), (error: DashboardRepositoryError) => error.kind === "BACKEND_TIMEOUT");
+  await assert.rejects(requestDashboardRepositories(url, token, async () => new Response("failure", { status: 500 })),
+    (error: DashboardRepositoryError) => error.kind === "BACKEND_UNAVAILABLE");
+  await assert.rejects(requestDashboardRepositories(url, token, async () => new Response("not-json", { status: 200 })),
+    (error: DashboardRepositoryError) => error.kind === "BACKEND_RESPONSE_INVALID");
+  await assert.rejects(requestDashboardRepositories(url, token, async () => new Response("x", {
+    status: 200, headers: { "Content-Length": String(129 * 1024) },
+  })), (error: DashboardRepositoryError) => error.kind === "BACKEND_RESPONSE_INVALID"
+    && !error.toString().includes(token));
 });
 
 test("backend timeout, malformed response, and auth failure become bounded UI states", async () => {
@@ -352,6 +445,8 @@ test("production source has no browser token storage, raw HTML, or public secret
     "src/app/global-error.tsx", "src/components/display-text.tsx", "src/components/dashboard-view.tsx",
     "src/lib/server/auth0.ts", "src/lib/server/dashboard-session.ts", "src/lib/dashboard-session-core.ts",
     "src/lib/dashboard-selection.ts", "src/lib/github-connection-core.ts",
+    "src/lib/dashboard-repositories-core.ts", "src/lib/server/dashboard-repositories.ts",
+    "src/components/repositories-view.tsx", "src/app/dashboard/repositories/page.tsx",
     "src/lib/server/github-connection.ts", "src/app/github/connect/route.ts",
     "src/app/github/callback/route.ts", "src/app/github/setup/route.ts"];
   const source = files.map((file) => readFileSync(join(frontendRoot, file), "utf8")).join("\n");

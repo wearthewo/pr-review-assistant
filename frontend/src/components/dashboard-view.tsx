@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import type { DashboardFailureKind, DashboardState } from "@/lib/dashboard-session-core";
 import { selectAuthorizedTenant } from "@/lib/dashboard-selection";
@@ -13,8 +14,8 @@ const workflow = [
 ] as const;
 
 const navigation = ["Overview", "Repositories", "Reviews", "Usage", "Settings"] as const;
-
-type Membership = Readonly<{ tenantId: string; role: "OWNER" | "MEMBER" }>;
+export type DashboardSection = typeof navigation[number];
+export type Membership = Readonly<{ tenantId: string; role: "OWNER" | "MEMBER" }>;
 
 export function DashboardView({
   state,
@@ -37,7 +38,7 @@ export function DashboardView({
     return <InvalidTenantState />;
   }
 
-  return <DashboardShell membership={selection.membership} memberships={selection.memberships}
+  return <OverviewDashboard membership={selection.membership} memberships={selection.memberships}
     connectionMessage={connectionMessage} />;
 }
 
@@ -86,35 +87,14 @@ function UnboundState({ connectionMessage }: Readonly<{ connectionMessage: reado
   );
 }
 
-function DashboardShell({
+function OverviewDashboard({
   membership,
   memberships,
   connectionMessage,
 }: Readonly<{ membership: Membership; memberships: readonly Membership[];
   connectionMessage: readonly [string, string] | null }>) {
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <Brand />
-        <DashboardNavigation />
-        <div className="sidebar-account">
-          <span className="account-label">Current workspace</span>
-          <strong>{tenantLabel(membership.tenantId)}</strong>
-          <span className="role-badge">{membership.role}</span>
-          <a className="text-link" href="/auth/logout">Sign out</a>
-        </div>
-      </aside>
-
-      <div className="workspace">
-        <header className="mobile-header">
-          <Brand />
-          <details className="mobile-navigation">
-            <summary>Navigation</summary>
-            <DashboardNavigation />
-          </details>
-        </header>
-
-        <main id="main-content" className="dashboard-main">
+    <DashboardFrame membership={membership} activeSection="Overview">
           {connectionMessage && <ConnectionNotice message={connectionMessage} />}
           <header className="overview-header">
             <div>
@@ -146,12 +126,14 @@ function DashboardShell({
 
             <article className="next-step-panel">
               <p className="section-kicker">Next step</p>
-              <h2>Repository controls are not available yet</h2>
+              <h2>Inspect connected repositories</h2>
               <p>
-                Repository selection and management arrive in M13D. This overview intentionally
+                View the repositories already recorded for this workspace. This overview still
                 shows no fabricated repository, review, or usage totals.
               </p>
-              <span className="button button-disabled" aria-disabled="true">Manage repositories</span>
+              <Link className="button button-secondary" href={`/dashboard/repositories?tenant=${membership.tenantId}`}>
+                View repositories
+              </Link>
             </article>
           </section>
 
@@ -172,6 +154,37 @@ function DashboardShell({
               ))}
             </ol>
           </section>
+    </DashboardFrame>
+  );
+}
+
+export function DashboardFrame({
+  membership,
+  activeSection,
+  children,
+}: Readonly<{ membership: Membership; activeSection: DashboardSection; children: ReactNode }>) {
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <Brand />
+        <DashboardNavigation activeSection={activeSection} />
+        <div className="sidebar-account">
+          <span className="account-label">Current workspace</span>
+          <strong>{tenantLabel(membership.tenantId)}</strong>
+          <span className="role-badge">{membership.role}</span>
+          <a className="text-link" href="/auth/logout">Sign out</a>
+        </div>
+      </aside>
+      <div className="workspace">
+        <header className="mobile-header">
+          <Brand />
+          <details className="mobile-navigation">
+            <summary>Navigation</summary>
+            <DashboardNavigation activeSection={activeSection} />
+          </details>
+        </header>
+        <main id="main-content" className="dashboard-main">
+          {children}
         </main>
       </div>
     </div>
@@ -182,10 +195,11 @@ function ConnectionNotice({ message }: Readonly<{ message: readonly [string, str
   return <aside className="connection-notice" aria-live="polite"><strong>{message[0]}</strong><span>{message[1]}</span></aside>;
 }
 
-function TenantSelector({
+export function TenantSelector({
   membership,
   memberships,
-}: Readonly<{ membership: Membership; memberships: readonly Membership[] }>) {
+  action = "/dashboard",
+}: Readonly<{ membership: Membership; memberships: readonly Membership[]; action?: string }>) {
   if (memberships.length === 1) {
     return (
       <div className="tenant-summary">
@@ -195,7 +209,7 @@ function TenantSelector({
     );
   }
   return (
-    <form className="tenant-selector" method="get" action="/dashboard">
+    <form className="tenant-selector" method="get" action={action}>
       <label htmlFor="tenant-selection">Workspace</label>
       <div>
         <select id="tenant-selection" name="tenant" defaultValue={membership.tenantId}>
@@ -212,13 +226,14 @@ function TenantSelector({
   );
 }
 
-function DashboardNavigation() {
+function DashboardNavigation({ activeSection }: Readonly<{ activeSection: DashboardSection }>) {
   return (
     <nav className="dashboard-navigation" aria-label="Primary">
       <ul>
-        {navigation.map((item) => item === "Overview" ? (
-          <li key={item}><Link href="/dashboard" aria-current="page">{item}</Link></li>
-        ) : (
+        <li><Link href="/dashboard" aria-current={activeSection === "Overview" ? "page" : undefined}>Overview</Link></li>
+        <li><Link href="/dashboard/repositories"
+          aria-current={activeSection === "Repositories" ? "page" : undefined}>Repositories</Link></li>
+        {navigation.filter((item) => item !== "Overview" && item !== "Repositories").map((item) => (
           <li key={item}><span aria-disabled="true">{item}<small>Deferred</small></span></li>
         ))}
       </ul>
@@ -270,6 +285,6 @@ function Brand() {
   );
 }
 
-function tenantLabel(tenantId: string): string {
+export function tenantLabel(tenantId: string): string {
   return `Workspace ${tenantId.slice(0, 8).toUpperCase()}`;
 }

@@ -20,6 +20,8 @@ M13C tests server-render the production shell for unauthenticated, unbound, sing
 
 M13D1 adds deterministic service and mock-HTTP tests for state/PKCE, stable GitHub identity, token exchange, authentication/rate-limit/malformed failures, bounded locally derived pagination, and redirect-host isolation. PostgreSQL 18.6 tests apply V1-V8 and prove state hashing, expiry, cross-user rejection, atomic single use, M14 mapping, idempotent ownership, existing-owner conflict, and concurrent binding convergence. Frontend tests cover the authenticated unbound connect form, same-origin mutation guard, constrained authorization/callback redirects, bounded outcomes, ignored setup identifiers, and continued absence of browser token storage or public secrets.
 
+M13D2 PostgreSQL/Spring integration tests prove OWNER and MEMBER reads, deterministic ordering, honest empty results, the 100-row bound, minimal allowlisted DTOs, authentication, malformed identifiers, and non-enumerating denial for cross-tenant, unknown, and unowned tenants. Frontend tests server-render repository gates and real DTOs, exercise empty/truncated/error states, reject malformed/oversized/out-of-order responses, keep bearer credentials server-only, and prove extra malicious display fields and fake operational metrics are not rendered.
+
 ## Test layers
 
 ### Unit tests
