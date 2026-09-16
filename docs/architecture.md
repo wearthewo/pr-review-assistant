@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M15. M13D1 adds only the secure GitHub-to-human ownership bridge; repository management and other dashboard product operations remain absent.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M15. M13D2 adds a bounded read-only repository dashboard over M14 ownership state; repository mutation and later dashboard product operations remain absent.
 
 ## System context
 
@@ -99,7 +99,9 @@ The Next.js 16 App Router defaults to Server Components. Auth0 Universal Login o
 
 The browser is never a tenant authority. A verified `(issuer, subject)` resolves to an application user, then a membership, then an authorized tenant. M13D1 can create the first membership only from server-verified personal GitHub installation ownership; browser/setup identifiers remain untrusted hints and are ignored by the implemented flow. GitHub, OpenAI, auth client, webhook, and database secrets never enter `NEXT_PUBLIC_*` configuration or Client Components.
 
-The request boundary generates a fresh CSP nonce and attaches strict production headers. React text escaping remains the display baseline. `/dashboard` is a Server Component that obtains the bounded session DTO, renders unauthenticated/unbound/error states, and selects a workspace only from returned memberships. An optional tenant query identifies a preference but never authorizes it; an unmatched value fails closed. Overview is the only functional dashboard section. Repositories, reviews, usage, settings, billing, and observability remain future scope.
+The request boundary generates a fresh CSP nonce and attaches strict production headers. React text escaping remains the display baseline. `/dashboard` is a Server Component that obtains the bounded session DTO, renders unauthenticated/unbound/error states, and selects a workspace only from returned memberships. An optional tenant query identifies a preference but never authorizes it; an unmatched value fails closed. Overview and the read-only Repositories section are functional; reviews, usage, settings, billing, and observability remain future scope.
+
+The repository page sends the selected authorized identifier server-to-server to `GET /api/dashboard/tenants/{tenantId}/repositories`. Spring repeats membership authorization before a tenant-scoped PostgreSQL query; prior session selection alone is never sufficient. M14 `tenant_repositories` is the bounded dashboard read model, while GitHub remains the external source of truth. Results are ordered by numeric GitHub repository ID and limited to 100 with explicit truncation. No live GitHub, token-generation, AI, configuration, or per-repository request occurs. The DTO deliberately omits unavailable display names and all inferred status or metrics.
 
 ### Infrastructure and delivery
 
@@ -122,7 +124,7 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, internal tenant/installation/repository ownership, human identity/membership authorization, disabled-by-default job pollers, exact-revision repository configuration, a disabled-by-default AI adapter/review engine, deterministic finding suppression, durable review publication, and tenant usage accounting. Database locks, constraints, claim tokens, and tenant/month quota locks make provisioning, work ownership, and quota decisions safe across processes. PostgreSQL stores ownership UUIDs, webhook envelopes, immutable targets, usage states with bounded operational metadata, and only the sanitized accepted user-facing publication payload plus routing metadata. It stores no credentials, fetched context, repository configuration, prompts, raw AI responses, rejected findings, patches, prices, or suppression content. The frontend is a separate Next.js process boundary and calls only the protected session endpoint server-to-server; deployment topology remains undecided.
+The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, internal tenant/installation/repository ownership, human identity/membership authorization, a bounded repository read endpoint, disabled-by-default job pollers, exact-revision repository configuration, a disabled-by-default AI adapter/review engine, deterministic finding suppression, durable review publication, and tenant usage accounting. Database locks, constraints, claim tokens, and tenant/month quota locks make provisioning, work ownership, and quota decisions safe across processes. PostgreSQL stores ownership UUIDs, webhook envelopes, immutable targets, usage states with bounded operational metadata, and only the sanitized accepted user-facing publication payload plus routing metadata. It stores no credentials, fetched context, repository configuration, prompts, raw AI responses, rejected findings, patches, prices, or suppression content. The frontend is a separate Next.js process boundary and calls protected dashboard endpoints only server-to-server; deployment topology remains undecided.
 
 ## Decision records
 

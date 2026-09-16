@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. M13D1 adds secure personal GitHub-installation ownership bootstrap; repository management, review history, usage UI, settings, and billing remain unimplemented.
+> Project status: **pre-alpha**. M13D2 adds a real read-only repository dashboard over the existing tenant ownership records; repository mutation, review history, usage UI, settings, and billing remain unimplemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -94,7 +94,9 @@ M13B uses Auth0 Universal Login as one production-capable OIDC path. Next.js kee
 
 M13C turns that boundary into a responsive, server-rendered dashboard shell. An authenticated user without membership sees a closed onboarding state; a member sees only memberships returned by Spring. The optional `tenant` query value identifies a desired membership, but the server renders it only after an exact match against that authenticated set. Unknown values disclose no tenant data and never fall back to another tenant. Overview contains descriptive pipeline and membership state only—no fabricated repository, review, finding, usage, quota, token, or spend metrics.
 
-Historical tenants remain valid and inaccessible until the M13D1 proof matches their existing personal installation. No user is attached from a tenant UUID, submitted installation ID, repository ID/name, organization, email, or domain. Organization onboarding still requires stronger server-verified authority. Repositories, Reviews, Usage, and Settings remain disabled navigation foundations.
+Historical tenants remain valid and inaccessible until the M13D1 proof matches their existing personal installation. No user is attached from a tenant UUID, submitted installation ID, repository ID/name, organization, email, or domain. Organization onboarding still requires stronger server-verified authority. Reviews, Usage, and Settings remain disabled navigation foundations; repository mutation remains deferred.
+
+M13D2 makes Repositories the first tenant-resource dashboard. `GET /api/dashboard/tenants/{tenantId}/repositories` treats the path UUID only as a requested identifier, independently reauthorizes the JWT-backed application user through `tenant_memberships`, and then reads a bounded, deterministically ordered list from M14's `tenant_repositories`. The DTO exposes only the numeric GitHub repository ID and the time the ownership record was first stored. Repository names, visibility, enablement, configuration state, and review metrics are not persisted and are neither inferred nor fabricated. Ordinary dashboard rendering performs no GitHub or AI call; PostgreSQL is the available read model and may lag GitHub.
 
 The initial operator policy is confidence 85, minimum severity MEDIUM, and at most three publication candidates. Silence is better than a weak comment; zero accepted findings completes without a GitHub write.
 
