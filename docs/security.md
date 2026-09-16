@@ -139,6 +139,8 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 - No automatic ownership bootstrap exists. Installation IDs, repository IDs/names, organizations, domains, emails, and tenant UUIDs cannot create membership. A later flow must verify GitHub ownership server-side.
 - Browser traffic terminates at Next.js and Next.js calls Spring server-to-server. No broad CORS is enabled. Spring's dashboard API is stateless bearer authenticated and consumes no cookies, so CSRF is disabled there.
 - M13B adds no application state-changing browser endpoint. Auth0 retains state/PKCE and callback protections, login return destinations are fixed, and future cookie-authenticated mutations must enforce origin/fetch metadata plus CSRF tokens where appropriate. GET never mutates product state.
+- M13C keeps selection server-rendered. A `tenant` query value is an untrusted identifier and must exactly match one of the memberships returned for the current authenticated backend session. Unknown or malformed values render a non-enumerating denial; they never cause fallback to or disclosure of a different tenant. No tenant selection or token is stored in browser storage.
+- The overview reports only membership role and static pipeline/product state. It does not fabricate or infer repository, review, finding, quota, token, or spend metrics. Deferred navigation has no business routes or mutation controls.
 
 ### AI transport controls implemented in M8
 

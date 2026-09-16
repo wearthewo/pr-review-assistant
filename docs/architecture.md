@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M15. M13B adds the human OIDC identity and tenant-membership authorization foundation without tenant-facing product features.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M15. M13C adds the authenticated dashboard shell and overview without new backend endpoints or tenant-facing product operations.
 
 ## System context
 
@@ -97,7 +97,7 @@ The Next.js 16 App Router defaults to Server Components. Auth0 Universal Login o
 
 The browser is never a tenant authority. A verified `(issuer, subject)` resolves to an application user, then a membership, then an authorized tenant. Historical/unowned tenants are invisible; secure ownership binding is deferred rather than inferred from browser values, email, or GitHub identifiers. GitHub, OpenAI, auth client, webhook, and database secrets never enter `NEXT_PUBLIC_*` configuration or Client Components.
 
-The request boundary generates a fresh CSP nonce and attaches strict production headers. React text escaping remains the display baseline. M13B contains only `/`, authentication routes, a minimal `/dashboard` session/onboarding shell, and loading/error/not-found foundations. Configuration, repositories, reviews, usage, billing, and observability remain future scope.
+The request boundary generates a fresh CSP nonce and attaches strict production headers. React text escaping remains the display baseline. `/dashboard` is a Server Component that obtains the bounded session DTO, renders unauthenticated/unbound/error states, and selects a workspace only from returned memberships. An optional tenant query identifies a preference but never authorizes it; an unmatched value fails closed. Overview is the only functional dashboard section. Repositories, reviews, usage, settings, billing, and observability remain future scope.
 
 ### Infrastructure and delivery
 

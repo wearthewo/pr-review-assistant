@@ -10,21 +10,28 @@ import { DashboardView } from "@/components/dashboard-view";
 import { DisplayText } from "@/components/display-text";
 import { resolveAuthEnvironment } from "@/lib/auth-environment-validation";
 import { resolveBackendOrigin } from "@/lib/backend-origin-validation";
-import { loadDashboardStateWith, requestDashboardSession, type AuthenticatedDashboardSession } from "@/lib/dashboard-session-core";
+import {
+  DashboardSessionError,
+  loadDashboardStateWith,
+  requestDashboardSession,
+  type AuthenticatedDashboardSession,
+} from "@/lib/dashboard-session-core";
+import { selectAuthorizedTenant } from "@/lib/dashboard-selection";
 import { secureProxy } from "@/lib/proxy-core";
 import { BASE_SECURITY_HEADERS, buildContentSecurityPolicy } from "@/lib/security-headers";
 
 const frontendRoot = process.cwd();
 const USER_ID = "9e02b328-f02a-4c77-a754-b3d88a7a6a92";
 const TENANT_ID = "4bd9bba9-5c17-47f1-a5af-1666fd68d0c7";
+const SECOND_TENANT_ID = "113f2e2a-66b3-4fb8-9f49-212bac94d255";
 
 test("root and unauthenticated dashboard render without protected data", () => {
   const home = renderToStaticMarkup(<HomePage />);
   const dashboard = renderToStaticMarkup(<DashboardView state={{ status: "unauthenticated" }} />);
   assert.match(home, /<main/);
   assert.match(home, /Signal for the changes that matter/);
-  assert.match(dashboard, /Sign in to establish a protected application session/);
-  assert.doesNotMatch(dashboard, /Authorized tenant|OWNER|MEMBER/);
+  assert.match(dashboard, /Sign in to your dashboard/);
+  assert.doesNotMatch(dashboard, /Workspace [0-9A-F]{8}|OWNER|MEMBER/);
 });
 
 test("untrusted display text is escaped and remains inert", () => {
@@ -140,7 +147,7 @@ test("authenticated dashboard passes bearer token only through server callback",
   assert.equal(receivedToken, secretToken);
   const html = renderToStaticMarkup(<DashboardView state={state} />);
   assert.doesNotMatch(html, new RegExp(secretToken));
-  assert.match(html, /not securely linked to a tenant/);
+  assert.match(html, /no GitHub installation has been securely linked/);
 });
 
 test("backend request uses bearer server side and strictly validates its DTO", async () => {
@@ -169,8 +176,123 @@ test("backend failures never expose response bodies or bearer tokens", async () 
 test("membership-less state is explicit and never fabricates a tenant", () => {
   const html = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
     applicationUserId: USER_ID, memberships: [], onboardingRequired: true }} />);
-  assert.match(html, /No tenant data is available/);
-  assert.doesNotMatch(html, /Authorized tenant|OWNER|MEMBER/);
+  assert.match(html, /Connect your GitHub workspace next/);
+  assert.match(html, /Secure installation ownership verification is coming/);
+  assert.doesNotMatch(html, /Workspace [0-9A-F]{8}|OWNER|MEMBER/);
+});
+
+test("one authorized membership renders the tenant shell and backend role", () => {
+  const html = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
+    applicationUserId: USER_ID, memberships: [{ tenantId: TENANT_ID, role: "OWNER" }],
+    onboardingRequired: false }} />);
+  assert.match(html, /Workspace 4BD9BBA9/);
+  assert.match(html, /OWNER/);
+  assert.match(html, /Membership.*Verified by the backend/s);
+});
+
+test("multiple memberships select deterministically and support an authorized request", () => {
+  const memberships = [
+    { tenantId: TENANT_ID, role: "OWNER" as const },
+    { tenantId: SECOND_TENANT_ID, role: "MEMBER" as const },
+  ];
+  const defaultSelection = selectAuthorizedTenant(memberships, null);
+  assert.equal(defaultSelection.status, "selected");
+  if (defaultSelection.status === "selected") {
+    assert.equal(defaultSelection.membership.tenantId, SECOND_TENANT_ID);
+  }
+  const selected = selectAuthorizedTenant(memberships, TENANT_ID);
+  assert.equal(selected.status, "selected");
+  if (selected.status === "selected") {
+    assert.equal(selected.membership.role, "OWNER");
+  }
+  const html = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
+    applicationUserId: USER_ID, memberships, onboardingRequired: false }} requestedTenantId={TENANT_ID} />);
+  assert.match(html, /name="tenant"/);
+  assert.match(html, /Workspace 4BD9BBA9/);
+  assert.match(html, /Workspace 113F2E2A/);
+});
+
+test("unauthorized requested tenant fails closed instead of falling back", () => {
+  const unknown = "d14f6528-46b8-4927-92ac-aa79c13263ba";
+  const state: AuthenticatedDashboardSession = { status: "authenticated", applicationUserId: USER_ID,
+    memberships: [{ tenantId: TENANT_ID, role: "MEMBER" }], onboardingRequired: false };
+  assert.deepEqual(selectAuthorizedTenant(state.memberships, unknown), { status: "invalid" });
+  const html = renderToStaticMarkup(<DashboardView state={state} requestedTenantId={unknown} />);
+  assert.match(html, /That workspace cannot be opened/);
+  assert.doesNotMatch(html, /4BD9BBA9|OWNER|MEMBER/);
+});
+
+test("a tenant UUID alone never creates authorization", () => {
+  const html = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
+    applicationUserId: USER_ID, memberships: [], onboardingRequired: true }} requestedTenantId={TENANT_ID} />);
+  assert.match(html, /Connect your GitHub workspace next/);
+  assert.doesNotMatch(html, /4BD9BBA9|OWNER|MEMBER/);
+});
+
+test("overview renders no fabricated repository review or usage metrics", () => {
+  const html = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
+    applicationUserId: USER_ID, memberships: [{ tenantId: TENANT_ID, role: "MEMBER" }],
+    onboardingRequired: false }} />);
+  assert.doesNotMatch(html, /\d+\s+(?:repositories|reviews|findings|tokens)/i);
+  assert.doesNotMatch(html, /suppression rate|monthly usage|AI spend/i);
+  assert.match(html, /no fabricated repository, review, or usage totals/);
+});
+
+test("deferred navigation is accessible but cannot perform business actions", () => {
+  const html = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
+    applicationUserId: USER_ID, memberships: [{ tenantId: TENANT_ID, role: "MEMBER" }],
+    onboardingRequired: false }} />);
+  assert.match(html, /aria-current="page"[^>]*>Overview/);
+  assert.match(html, /aria-disabled="true">Repositories/);
+  assert.doesNotMatch(html, /href="\/dashboard\/(?:repositories|reviews|usage|settings)"/);
+});
+
+test("backend timeout, malformed response, and auth failure become bounded UI states", async () => {
+  const authenticated = { hasSession: async () => true, accessToken: async () => "server-token" };
+  const timeout = await loadDashboardStateWith(authenticated, async () => {
+    throw new DashboardSessionError("BACKEND_TIMEOUT");
+  });
+  const malformed = await loadDashboardStateWith(authenticated, async () => {
+    throw new DashboardSessionError("BACKEND_RESPONSE_INVALID");
+  });
+  const authorization = await loadDashboardStateWith(authenticated, async () => {
+    throw new DashboardSessionError("AUTHORIZATION_FAILED");
+  });
+  const unavailable = await loadDashboardStateWith(authenticated, async () => {
+    throw new DashboardSessionError("BACKEND_UNAVAILABLE");
+  });
+  assert.match(renderToStaticMarkup(<DashboardView state={timeout} />), /took too long/);
+  assert.match(renderToStaticMarkup(<DashboardView state={malformed} />), /invalid response/);
+  assert.match(renderToStaticMarkup(<DashboardView state={authorization} />), /could not be authorized/);
+  assert.match(renderToStaticMarkup(<DashboardView state={unavailable} />), /temporarily unavailable/);
+});
+
+test("network timeout classification does not expose request credentials", async () => {
+  const secret = "server-timeout-token";
+  await assert.rejects(
+    requestDashboardSession(new URL("https://backend.example/api/dashboard/session"), secret,
+      async () => { throw new DOMException("operation stopped", "TimeoutError"); }),
+    (error: DashboardSessionError) => error.kind === "BACKEND_TIMEOUT" && !error.toString().includes(secret),
+  );
+});
+
+test("malicious requested tenant text remains inert and undisclosed", () => {
+  const malicious = '<script>steal("token")</script>';
+  const html = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
+    applicationUserId: USER_ID, memberships: [{ tenantId: TENANT_ID, role: "MEMBER" }],
+    onboardingRequired: false }} requestedTenantId={malicious} />);
+  assert.doesNotMatch(html, /<script>|steal\(/);
+  assert.match(html, /That workspace cannot be opened/);
+});
+
+test("desktop and mobile dashboard navigation use accessible native landmarks", () => {
+  const html = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
+    applicationUserId: USER_ID, memberships: [{ tenantId: TENANT_ID, role: "MEMBER" }],
+    onboardingRequired: false }} />);
+  assert.match(html, /<aside class="sidebar">/);
+  assert.match(html, /<nav class="dashboard-navigation" aria-label="Primary">/);
+  assert.match(html, /<details class="mobile-navigation"><summary>Navigation<\/summary>/);
+  assert.match(html, /id="main-content"/);
 });
 
 test("server-only boundaries and Auth0 session protections are configured", () => {
@@ -188,7 +310,8 @@ test("server-only boundaries and Auth0 session protections are configured", () =
 test("production source has no browser token storage, raw HTML, or public secrets", () => {
   const files = ["src/app/page.tsx", "src/app/dashboard/page.tsx", "src/app/error.tsx",
     "src/app/global-error.tsx", "src/components/display-text.tsx", "src/components/dashboard-view.tsx",
-    "src/lib/server/auth0.ts", "src/lib/server/dashboard-session.ts", "src/lib/dashboard-session-core.ts"];
+    "src/lib/server/auth0.ts", "src/lib/server/dashboard-session.ts", "src/lib/dashboard-session-core.ts",
+    "src/lib/dashboard-selection.ts"];
   const source = files.map((file) => readFileSync(join(frontendRoot, file), "utf8")).join("\n");
   const example = readFileSync(join(frontendRoot, "../.env.example"), "utf8");
   assert.doesNotMatch(source, /localStorage|sessionStorage|dangerouslySetInnerHTML|\beval\s*\(|new\s+Function\b/);

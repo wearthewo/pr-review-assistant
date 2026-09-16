@@ -1,51 +1,264 @@
 import Link from "next/link";
 
-import type { DashboardState } from "@/lib/dashboard-session-core";
+import type { DashboardFailureKind, DashboardState } from "@/lib/dashboard-session-core";
+import { selectAuthorizedTenant } from "@/lib/dashboard-selection";
 
-export function DashboardView({ state }: Readonly<{ state: DashboardState }>) {
+const workflow = [
+  ["01", "Pull request", "A signed GitHub event identifies the exact revision."],
+  ["02", "Repository context", "Bounded changed code and relevant context are retrieved."],
+  ["03", "AI analysis", "Provider-neutral analysis evaluates concrete risks."],
+  ["04", "Evidence validation", "Every candidate is checked against the changed lines."],
+  ["05", "False-positive suppression", "Weak, duplicate, and low-confidence findings are removed."],
+  ["06", "GitHub comments", "Only the remaining high-confidence findings are published."],
+] as const;
+
+const navigation = ["Overview", "Repositories", "Reviews", "Usage", "Settings"] as const;
+
+type Membership = Readonly<{ tenantId: string; role: "OWNER" | "MEMBER" }>;
+
+export function DashboardView({
+  state,
+  requestedTenantId = null,
+}: Readonly<{ state: DashboardState; requestedTenantId?: string | null }>) {
+  if (state.status === "unauthenticated") {
+    return <UnauthenticatedState />;
+  }
+  if (state.status === "error") {
+    return <DashboardError kind={state.kind} />;
+  }
+  if (state.onboardingRequired) {
+    return <UnboundState />;
+  }
+
+  const selection = selectAuthorizedTenant(state.memberships, requestedTenantId);
+  if (selection.status === "invalid") {
+    return <InvalidTenantState />;
+  }
+
+  return <DashboardShell membership={selection.membership} memberships={selection.memberships} />;
+}
+
+function UnauthenticatedState() {
   return (
-    <main id="main-content" className="dashboard-shell">
-      <header className="dashboard-header">
-        <Link className="brand" href="/">
-          <span className="brand-mark" aria-hidden="true">RA</span>
-          <span>Review Assistant</span>
-        </Link>
-        <span className="status-chip">Authentication foundation</span>
-      </header>
-
-      <section className="empty-panel" aria-labelledby="dashboard-title">
-        <p className="eyebrow">M13B identity boundary</p>
-        <h1 id="dashboard-title">Dashboard access</h1>
-        {state.status === "unauthenticated" ? (
-          <>
-            <p>Sign in to establish a protected application session.</p>
-            <p className="muted">No tenant or product data is available before authentication.</p>
-            <a className="button button-primary" href="/auth/login">Sign in</a>
-          </>
-        ) : state.onboardingRequired ? (
-          <>
-            <p>Authentication succeeded.</p>
-            <p className="muted">
-              This account is not securely linked to a tenant. No tenant data is available until a
-              future server-verified GitHub ownership flow creates a membership.
-            </p>
-            <a className="text-link" href="/auth/logout">Sign out</a>
-          </>
-        ) : (
-          <>
-            <p>Authentication and tenant membership verification succeeded.</p>
-            <ul className="membership-list">
-              {state.memberships.map((membership) => (
-                <li key={membership.tenantId}>
-                  <span>Authorized tenant</span><strong>{membership.role}</strong>
-                </li>
-              ))}
-            </ul>
-            <a className="text-link" href="/auth/logout">Sign out</a>
-          </>
-        )}
-        <Link className="text-link" href="/">Return to the product overview</Link>
+    <main id="main-content" className="dashboard-gate">
+      <Brand />
+      <section className="gate-panel" aria-labelledby="dashboard-title">
+        <p className="eyebrow">Protected workspace</p>
+        <h1 id="dashboard-title">Sign in to your dashboard</h1>
+        <p className="gate-copy">
+          Authentication is required before any tenant or product information can be loaded.
+        </p>
+        <a className="button button-primary" href="/auth/login">Sign in securely</a>
       </section>
     </main>
   );
+}
+
+function UnboundState() {
+  return (
+    <main id="main-content" className="dashboard-gate">
+      <div className="gate-header">
+        <Brand />
+        <a className="text-link" href="/auth/logout">Sign out</a>
+      </div>
+      <section className="gate-panel onboarding-panel" aria-labelledby="dashboard-title">
+        <span className="state-indicator" aria-hidden="true">01</span>
+        <p className="eyebrow">Account authenticated</p>
+        <h1 id="dashboard-title">Connect your GitHub workspace next</h1>
+        <p className="gate-copy">
+          Your identity is verified, but no GitHub installation has been securely linked to this
+          dashboard. No tenant, repository, review, or usage data is available yet.
+        </p>
+        <div className="deferred-action" aria-label="GitHub connection is not yet available">
+          <button className="button button-primary" type="button" disabled>Connect GitHub</button>
+          <span>Secure installation ownership verification is coming in a later milestone.</span>
+        </div>
+        <p className="security-note">
+          Review Assistant will never ask you to claim access with a tenant UUID, installation ID,
+          repository ID, or organization name.
+        </p>
+      </section>
+    </main>
+  );
+}
+
+function DashboardShell({
+  membership,
+  memberships,
+}: Readonly<{ membership: Membership; memberships: readonly Membership[] }>) {
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <Brand />
+        <DashboardNavigation />
+        <div className="sidebar-account">
+          <span className="account-label">Current workspace</span>
+          <strong>{tenantLabel(membership.tenantId)}</strong>
+          <span className="role-badge">{membership.role}</span>
+          <a className="text-link" href="/auth/logout">Sign out</a>
+        </div>
+      </aside>
+
+      <div className="workspace">
+        <header className="mobile-header">
+          <Brand />
+          <details className="mobile-navigation">
+            <summary>Navigation</summary>
+            <DashboardNavigation />
+          </details>
+        </header>
+
+        <main id="main-content" className="dashboard-main">
+          <header className="overview-header">
+            <div>
+              <p className="eyebrow">Overview</p>
+              <h1>Signal for the changes that matter.</h1>
+              <p className="overview-lede">
+                An AI reviewer designed to comment less, validate evidence, and surface the risks
+                worth an engineer&apos;s attention.
+              </p>
+            </div>
+            <TenantSelector membership={membership} memberships={memberships} />
+          </header>
+
+          <section className="overview-grid" aria-label="Workspace overview">
+            <article className="status-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="section-kicker">Workspace access</p>
+                  <h2>{tenantLabel(membership.tenantId)}</h2>
+                </div>
+                <span className="role-badge">{membership.role}</span>
+              </div>
+              <dl className="status-list">
+                <div><dt>Membership</dt><dd>Verified by the backend</dd></div>
+                <div><dt>Review engine</dt><dd>Pipeline defined; live status not exposed here</dd></div>
+                <div><dt>Operational data</dt><dd>Available in later dashboard milestones</dd></div>
+              </dl>
+            </article>
+
+            <article className="next-step-panel">
+              <p className="section-kicker">Next step</p>
+              <h2>Repository controls are not available yet</h2>
+              <p>
+                Repository selection and management arrive in M13D. This overview intentionally
+                shows no fabricated repository, review, or usage totals.
+              </p>
+              <span className="button button-disabled" aria-disabled="true">Manage repositories</span>
+            </article>
+          </section>
+
+          <section className="workflow-section" aria-labelledby="workflow-title">
+            <div className="section-heading">
+              <div>
+                <p className="section-kicker">Review pipeline</p>
+                <h2 id="workflow-title">From pull request to useful signal</h2>
+              </div>
+              <p>Deterministic boundaries surround probabilistic analysis.</p>
+            </div>
+            <ol className="workflow-list">
+              {workflow.map(([number, title, description]) => (
+                <li key={number}>
+                  <span className="workflow-number">{number}</span>
+                  <div><h3>{title}</h3><p>{description}</p></div>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function TenantSelector({
+  membership,
+  memberships,
+}: Readonly<{ membership: Membership; memberships: readonly Membership[] }>) {
+  if (memberships.length === 1) {
+    return (
+      <div className="tenant-summary">
+        <span>Workspace</span>
+        <strong>{tenantLabel(membership.tenantId)}</strong>
+      </div>
+    );
+  }
+  return (
+    <form className="tenant-selector" method="get" action="/dashboard">
+      <label htmlFor="tenant-selection">Workspace</label>
+      <div>
+        <select id="tenant-selection" name="tenant" defaultValue={membership.tenantId}>
+          {memberships.map((entry) => (
+            <option key={entry.tenantId} value={entry.tenantId}>
+              {tenantLabel(entry.tenantId)} · {entry.role}
+            </option>
+          ))}
+        </select>
+        <button className="button button-secondary" type="submit">Switch</button>
+      </div>
+      <p>The server verifies every selection against your memberships.</p>
+    </form>
+  );
+}
+
+function DashboardNavigation() {
+  return (
+    <nav className="dashboard-navigation" aria-label="Primary">
+      <ul>
+        {navigation.map((item) => item === "Overview" ? (
+          <li key={item}><Link href="/dashboard" aria-current="page">{item}</Link></li>
+        ) : (
+          <li key={item}><span aria-disabled="true">{item}<small>Deferred</small></span></li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+function InvalidTenantState() {
+  return (
+    <main id="main-content" className="centered-state">
+      <p className="eyebrow">Access not available</p>
+      <h1>That workspace cannot be opened.</h1>
+      <p className="muted">
+        The requested identifier did not match an authorized membership. No tenant information was disclosed.
+      </p>
+      <Link className="button button-primary" href="/dashboard">Return to your dashboard</Link>
+    </main>
+  );
+}
+
+function DashboardError({ kind }: Readonly<{ kind: DashboardFailureKind }>) {
+  const content: Record<DashboardFailureKind, readonly [string, string]> = {
+    AUTHORIZATION_FAILED: ["Your dashboard session could not be authorized.", "Sign in again to refresh your protected session."],
+    BACKEND_RESPONSE_INVALID: ["The dashboard received an invalid response.", "No unverified data was displayed. Try again shortly."],
+    BACKEND_TIMEOUT: ["The dashboard took too long to respond.", "The request was stopped safely. Try again shortly."],
+    BACKEND_UNAVAILABLE: ["The dashboard service is temporarily unavailable.", "Your account data remains protected. Try again shortly."],
+    SESSION_UNAVAILABLE: ["Your protected session is unavailable.", "Sign in again to continue."],
+  };
+  const [title, description] = content[kind];
+  return (
+    <main id="main-content" className="centered-state">
+      <p className="eyebrow">Dashboard unavailable</p>
+      <h1>{title}</h1>
+      <p className="muted">{description}</p>
+      <div className="state-actions">
+        <Link className="button button-primary" href="/dashboard">Try again</Link>
+        <a className="text-link" href="/auth/logout">Sign out</a>
+      </div>
+    </main>
+  );
+}
+
+function Brand() {
+  return (
+    <Link className="brand" href="/">
+      <span className="brand-mark" aria-hidden="true">RA</span>
+      <span>Review Assistant</span>
+    </Link>
+  );
+}
+
+function tenantLabel(tenantId: string): string {
+  return `Workspace ${tenantId.slice(0, 8).toUpperCase()}`;
 }

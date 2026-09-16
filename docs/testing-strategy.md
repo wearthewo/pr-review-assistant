@@ -16,6 +16,8 @@ M13A uses the Node test runner through a minimal TypeScript executor. Foundation
 
 M13B extends those lightweight frontend tests with unauthenticated and membership-less rendering, server-only bearer forwarding, strict backend DTO validation, response/token redaction, blocked token/profile routes, fixed login destinations, Auth0 environment/session-cookie assertions, and preservation of CSP. Backend tests cryptographically exercise RS256 plus expiry, not-before, issuer, audience, wrong-signature, and unsigned rejection; MockMvc covers empty 401 behavior and safe session DTOs. PostgreSQL 18.6 tests cover `(issuer, subject)` identity, issuer namespace separation, concurrent first-login convergence, membership uniqueness/role/FKs, Tenant A/Tenant B denial, historical unowned tenants, and clean V1-to-V7 plus populated V6-to-V7 migration. No live Auth0 tenant is required.
 
+M13C tests server-render the production shell for unauthenticated, unbound, single-membership, multi-membership, invalid-selection, authorization, timeout, unavailable, and malformed-response states. Pure selection tests prove deterministic defaults and exact authorized matching. Markup checks prove deferred sections have no business links, no fake metrics appear, roles come only from the backend DTO, malicious requested values remain inert, and desktop/mobile navigation uses semantic landmarks and native controls. The bearer-token and CSP regressions remain part of the same suite.
+
 ## Test layers
 
 ### Unit tests
