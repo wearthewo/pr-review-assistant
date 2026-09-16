@@ -1,0 +1,12 @@
+package io.prreviewassistant.dashboard.github;
+
+public enum GitHubConnectionError {
+    NOT_CONFIGURED,
+    INVALID_STATE,
+    GITHUB_AUTHENTICATION_REJECTED,
+    GITHUB_RATE_LIMITED,
+    GITHUB_UNAVAILABLE,
+    GITHUB_RESPONSE_INVALID,
+    TOO_MANY_INSTALLATIONS,
+    OWNERSHIP_CONFLICT
+}

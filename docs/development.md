@@ -2,7 +2,7 @@
 
 ## Current state
 
-The backend is complete through M15. M13C builds a responsive Overview shell on the accepted Auth0 and dashboard-session path in the Node.js 24 LTS / Next.js 16.3.5 frontend. It contains no repository/review/usage/settings feature, secure tenant-claim workflow, billing, CI/CD workflow, or deployment definition.
+The backend is complete through M15. M13D1 adds the secure personal-installation ownership bootstrap to the Node.js 24 LTS / Next.js 16.3.5 dashboard. It contains no repository/review/usage/settings feature, organization ownership flow, billing, CI/CD workflow, or deployment definition.
 
 ## Prerequisites
 
@@ -61,7 +61,7 @@ The backend requires `DASHBOARD_AUTH_ISSUER`, `DASHBOARD_AUTH_AUDIENCE`, and `DA
 
 For local dashboard checks, `/dashboard` renders sign-in when no session exists. An authenticated membership-less user gets the closed GitHub-connection onboarding state. Real memberships render the Overview shell. Multiple memberships may be selected with the native workspace form; the resulting `tenant` query value is matched against the fresh authenticated DTO on the server and is never stored in browser storage or treated as authorization. Repositories, Reviews, Usage, and Settings remain disabled labels.
 
-M13B intentionally has no membership creation API. Existing tenants are not assigned on login. Until a future server-verified GitHub ownership proof creates a membership, authenticated users receive only the onboarding-required state. Never bootstrap with email/domain matching or a submitted tenant, installation, repository, or organization identifier.
+For M13D1, register the exact `${APP_BASE_URL}/github/callback` URL on the existing GitHub App and configure `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, and `GITHUB_OAUTH_CALLBACK_URL`. The client ID differs from `GITHUB_APP_ID`. Production callback and OAuth origins require HTTPS; local loopback HTTP is accepted for development. Never bootstrap with email/domain matching or a submitted tenant, installation, repository, organization, username, or role. The setup URL may point to `/github/setup`, but its `installation_id` is deliberately ignored.
 
 Stop local infrastructure from the repository root without deleting the named volume:
 

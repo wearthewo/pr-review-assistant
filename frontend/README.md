@@ -1,6 +1,6 @@
 # Frontend
 
-This directory contains the M13C Next.js App Router dashboard foundation. Auth0 Universal Login provides the accepted OIDC path, while the dashboard adds a responsive server-rendered shell and honest Overview with no repository, review, usage, billing, settings, or tenant-management feature.
+This directory contains the M13C dashboard foundation plus the M13D1 server-only GitHub connection routes. Auth0 remains the SaaS identity provider; GitHub authorization is temporary ownership proof. There is still no repository, review, usage, billing, settings, or tenant-management feature.
 
 ## Toolchain
 
@@ -40,7 +40,7 @@ Pages are Server Components unless browser behavior requires otherwise; only the
 
 `src/proxy.ts` creates a fresh nonce per application request and applies a strict production Content Security Policy without `unsafe-inline` or `unsafe-eval`. Development alone permits `unsafe-eval` for Next.js tooling. Baseline headers disable framing, MIME sniffing, sensitive referrers, and unused browser capabilities. Repository and GitHub-derived text must continue to use React's escaped text rendering; raw HTML and dynamic code execution are prohibited.
 
-The browser is not a tenant authority. `/dashboard` asks the server-side Auth0 session for an access token, calls Spring server-to-server, and displays only Spring's bounded internal user/membership DTO. Missing authentication shows sign-in; an authenticated user without a membership sees a fail-closed onboarding state. M13C adds no application mutation endpoint. Auth0 retains OAuth state/PKCE protections; encrypted cookies are HttpOnly, `SameSite=Lax`, and `Secure` in production. Future browser-cookie mutations must validate origin/fetch metadata and use a CSRF token where appropriate. Login return destinations are fixed to `/dashboard`, and token/profile helper routes are unavailable.
+The browser is not a tenant authority. An unbound authenticated user submits a same-origin POST to `/github/connect`; Origin and Fetch Metadata are checked before Next.js asks the protected Spring start endpoint for a fixed GitHub authorization URL. `/github/callback` validates bounded code/state and performs the protected Spring callback server-to-server. Tokens and OAuth secrets never become Client Component props, HTML, URLs, or browser storage. `/github/setup` ignores the spoofable `installation_id` and only returns to fixed onboarding. All completion redirects are fixed dashboard states.
 
 The frontend introduces no CORS path: the browser talks to Next.js, and Next.js talks to Spring. M13C may receive `?tenant=<uuid>` to identify a preferred workspace, but its Server Component selects only an exact member of the authenticated backend response. It chooses the lexicographically first authorized tenant when no preference exists and fails closed for unknown, malformed, or duplicated values. The query parameter never grants authorization and is not browser-persisted.
 

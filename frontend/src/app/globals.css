@@ -166,6 +166,8 @@ h2 { font-size: clamp(2rem, 4vw, 3.4rem); }
 .onboarding-panel { position: relative; overflow: hidden; }
 .state-indicator { position: absolute; top: 1rem; right: 1.25rem; color: var(--border); font-size: 5rem; font-weight: 800; line-height: 1; }
 .deferred-action { display: flex; align-items: center; gap: 1rem; margin-top: 1.5rem; color: var(--muted); font-size: 0.88rem; }
+.connection-notice { display: flex; flex-wrap: wrap; gap: 0.35rem 0.75rem; margin-bottom: 1.25rem; padding: 0.8rem 1rem; border: 1px solid var(--border); border-radius: 0.55rem; background: var(--surface); color: var(--muted); }
+.connection-notice strong { color: var(--text); }
 .button:disabled, .button-disabled { color: var(--muted); background: var(--accent-soft); cursor: not-allowed; }
 .security-note { margin: 2rem 0 0; padding-top: 1.25rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.9rem; }
 

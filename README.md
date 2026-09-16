@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. M13C adds the authenticated dashboard shell and honest overview; repository, review-history, usage, settings, and billing features remain unimplemented.
+> Project status: **pre-alpha**. M13D1 adds secure personal GitHub-installation ownership bootstrap; repository management, review history, usage UI, settings, and billing remain unimplemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -86,11 +86,15 @@ After startup, `GET http://localhost:8080/actuator/health` is the operational en
 
 ## Current milestone
 
+M13D1 connects an authenticated SaaS user to an existing M14 tenant only through the existing GitHub App's server-side user authorization flow. Next.js accepts no installation or role authority from the browser. Spring creates a high-entropy state and PKCE challenge, stores only the state hash with a ten-minute lifetime and application-user binding, exchanges the callback code server-side, verifies the stable GitHub user ID, and reads bounded pages of `GET /user/installations`. The temporary GitHub user token is never persisted, returned, rendered, or logged.
+
+GitHub documents installation visibility as access, which may include collaborators and organization members; it is not sufficient to grant organization `OWNER`. The implemented rule therefore grants `OWNER` only when an existing M14 installation targets a personal `User` account whose numeric account ID exactly matches the authenticated GitHub user's numeric ID. Organization installations, multiple matches, unknown installations, existing other owners, stale/replayed/cross-user state, and setup-URL hints all fail closed. `installation_id` from GitHub's setup URL is ignored. Repository management and organization ownership proof remain deferred.
+
 M13B uses Auth0 Universal Login as one production-capable OIDC path. Next.js keeps the encrypted session in an HttpOnly cookie and obtains access tokens only on the server. It calls `GET /api/dashboard/session` with `Authorization: Bearer`; Spring independently validates RS256 signature, expiry/not-before, issuer, and audience before provisioning an internal user keyed by `(issuer, subject)` and resolving durable tenant memberships. The browser never supplies an authoritative tenant identity.
 
 M13C turns that boundary into a responsive, server-rendered dashboard shell. An authenticated user without membership sees a closed onboarding state; a member sees only memberships returned by Spring. The optional `tenant` query value identifies a desired membership, but the server renders it only after an exact match against that authenticated set. Unknown values disclose no tenant data and never fall back to another tenant. Overview contains descriptive pipeline and membership state only—no fabricated repository, review, finding, usage, quota, token, or spend metrics.
 
-Historical tenants remain valid but unowned for dashboard purposes. No user is automatically attached from a tenant UUID, installation ID, repository ID/name, organization, email, or domain. A future GitHub-authorized ownership proof is required to create the first membership. Repositories, Reviews, Usage, and Settings appear only as disabled navigation foundations; their routes, APIs, mutations, and product data remain deferred.
+Historical tenants remain valid and inaccessible until the M13D1 proof matches their existing personal installation. No user is attached from a tenant UUID, submitted installation ID, repository ID/name, organization, email, or domain. Organization onboarding still requires stronger server-verified authority. Repositories, Reviews, Usage, and Settings remain disabled navigation foundations.
 
 The initial operator policy is confidence 85, minimum severity MEDIUM, and at most three publication candidates. Silence is better than a weak comment; zero accepted findings completes without a GitHub write.
 
@@ -100,7 +104,7 @@ M11 renders accepted findings into one `COMMENT` review tied to the exact head S
 
 GitHub numeric installation and repository IDs are the only external ownership authorities. Owner/name strings, webhook sender fields, repository content, `.reviewbot.yml`, and supplied tenant-like fields never select an internal tenant. First use creates the tenant, installation, and repository mappings in one transaction; PostgreSQL advisory locks plus unique and composite foreign-key constraints make concurrent provisioning converge on one mapping and prevent cross-tenant reassignment.
 
-Review jobs carry the resolved tenant and internal repository association. Workers reject unresolved or mismatched ownership before GitHub retrieval, configuration loading, AI, or publication. Publications retain the same tenant association as their analysis job, and publication-only retries reuse persisted ownership without reprovisioning. Historical pre-M14 jobs/publications keep nullable ownership during this safe transition and cannot execute tenant-required production paths. Installation removal, repository transfer reconciliation, tenant suspension, RLS, retention, secure membership bootstrap, and billing remain deferred.
+Review jobs carry the resolved tenant and internal repository association. Workers reject unresolved or mismatched ownership before GitHub retrieval, configuration loading, AI, or publication. Publications retain the same tenant association as their analysis job, and publication-only retries reuse persisted ownership without reprovisioning. Historical pre-M14 jobs/publications keep nullable ownership during this safe transition and cannot execute tenant-required production paths. Installation removal, repository transfer reconciliation, tenant suspension, RLS, retention, organization ownership bootstrap, and billing remain deferred.
 
 ## Repository review configuration
 

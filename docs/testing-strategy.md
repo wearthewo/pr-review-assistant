@@ -18,6 +18,8 @@ M13B extends those lightweight frontend tests with unauthenticated and membershi
 
 M13C tests server-render the production shell for unauthenticated, unbound, single-membership, multi-membership, invalid-selection, authorization, timeout, unavailable, and malformed-response states. Pure selection tests prove deterministic defaults and exact authorized matching. Markup checks prove deferred sections have no business links, no fake metrics appear, roles come only from the backend DTO, malicious requested values remain inert, and desktop/mobile navigation uses semantic landmarks and native controls. The bearer-token and CSP regressions remain part of the same suite.
 
+M13D1 adds deterministic service and mock-HTTP tests for state/PKCE, stable GitHub identity, token exchange, authentication/rate-limit/malformed failures, bounded locally derived pagination, and redirect-host isolation. PostgreSQL 18.6 tests apply V1-V8 and prove state hashing, expiry, cross-user rejection, atomic single use, M14 mapping, idempotent ownership, existing-owner conflict, and concurrent binding convergence. Frontend tests cover the authenticated unbound connect form, same-origin mutation guard, constrained authorization/callback redirects, bounded outcomes, ignored setup identifiers, and continued absence of browser token storage or public secrets.
+
 ## Test layers
 
 ### Unit tests

@@ -19,7 +19,9 @@ type Membership = Readonly<{ tenantId: string; role: "OWNER" | "MEMBER" }>;
 export function DashboardView({
   state,
   requestedTenantId = null,
-}: Readonly<{ state: DashboardState; requestedTenantId?: string | null }>) {
+  connectionMessage = null,
+}: Readonly<{ state: DashboardState; requestedTenantId?: string | null;
+  connectionMessage?: readonly [string, string] | null }>) {
   if (state.status === "unauthenticated") {
     return <UnauthenticatedState />;
   }
@@ -27,7 +29,7 @@ export function DashboardView({
     return <DashboardError kind={state.kind} />;
   }
   if (state.onboardingRequired) {
-    return <UnboundState />;
+    return <UnboundState connectionMessage={connectionMessage} />;
   }
 
   const selection = selectAuthorizedTenant(state.memberships, requestedTenantId);
@@ -35,7 +37,8 @@ export function DashboardView({
     return <InvalidTenantState />;
   }
 
-  return <DashboardShell membership={selection.membership} memberships={selection.memberships} />;
+  return <DashboardShell membership={selection.membership} memberships={selection.memberships}
+    connectionMessage={connectionMessage} />;
 }
 
 function UnauthenticatedState() {
@@ -54,7 +57,7 @@ function UnauthenticatedState() {
   );
 }
 
-function UnboundState() {
+function UnboundState({ connectionMessage }: Readonly<{ connectionMessage: readonly [string, string] | null }>) {
   return (
     <main id="main-content" className="dashboard-gate">
       <div className="gate-header">
@@ -62,6 +65,7 @@ function UnboundState() {
         <a className="text-link" href="/auth/logout">Sign out</a>
       </div>
       <section className="gate-panel onboarding-panel" aria-labelledby="dashboard-title">
+        {connectionMessage && <ConnectionNotice message={connectionMessage} />}
         <span className="state-indicator" aria-hidden="true">01</span>
         <p className="eyebrow">Account authenticated</p>
         <h1 id="dashboard-title">Connect your GitHub workspace next</h1>
@@ -69,10 +73,10 @@ function UnboundState() {
           Your identity is verified, but no GitHub installation has been securely linked to this
           dashboard. No tenant, repository, review, or usage data is available yet.
         </p>
-        <div className="deferred-action" aria-label="GitHub connection is not yet available">
-          <button className="button button-primary" type="button" disabled>Connect GitHub</button>
-          <span>Secure installation ownership verification is coming in a later milestone.</span>
-        </div>
+        <form method="post" action="/github/connect" className="deferred-action">
+          <button className="button button-primary" type="submit">Connect GitHub</button>
+          <span>GitHub authorization verifies eligible personal installations server-side.</span>
+        </form>
         <p className="security-note">
           Review Assistant will never ask you to claim access with a tenant UUID, installation ID,
           repository ID, or organization name.
@@ -85,7 +89,9 @@ function UnboundState() {
 function DashboardShell({
   membership,
   memberships,
-}: Readonly<{ membership: Membership; memberships: readonly Membership[] }>) {
+  connectionMessage,
+}: Readonly<{ membership: Membership; memberships: readonly Membership[];
+  connectionMessage: readonly [string, string] | null }>) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -109,6 +115,7 @@ function DashboardShell({
         </header>
 
         <main id="main-content" className="dashboard-main">
+          {connectionMessage && <ConnectionNotice message={connectionMessage} />}
           <header className="overview-header">
             <div>
               <p className="eyebrow">Overview</p>
@@ -169,6 +176,10 @@ function DashboardShell({
       </div>
     </div>
   );
+}
+
+function ConnectionNotice({ message }: Readonly<{ message: readonly [string, string] }>) {
+  return <aside className="connection-notice" aria-live="polite"><strong>{message[0]}</strong><span>{message[1]}</span></aside>;
 }
 
 function TenantSelector({
