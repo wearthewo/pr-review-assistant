@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M15. M13C adds the authenticated dashboard shell and overview without new backend endpoints or tenant-facing product operations.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M15. M13D1 adds only the secure GitHub-to-human ownership bridge; repository management and other dashboard product operations remain absent.
 
 ## System context
 
@@ -38,6 +38,8 @@ Maps authoritative GitHub installation and repository numeric IDs to application
 Owns use-case coordination, authorization, tenant context, and transaction boundaries. It translates inbound requests into domain operations and exposes intentionally documented contracts. HTTP, persistence, and provider-specific types remain at adapters rather than becoming domain concepts.
 
 The dashboard sub-boundary independently validates Auth0 RS256 access JWTs in Spring, maps the trusted issuer/subject pair to an internal application user, and resolves tenant authorization only through durable membership. `AuthorizedTenantContext` can be created only by that membership lookup; a requested tenant UUID identifies a resource but never proves access. GitHub webhook identity remains separate from human identity.
+
+The ownership-bootstrap sub-boundary keeps Auth0 identity and GitHub human identity separate. It uses hashed, expiring, single-use state bound to the application user plus S256 PKCE, exchanges the code server-side, verifies the stable GitHub numeric user ID, and enumerates bounded pages of installations visible to that user. M14 remains the installation-to-tenant authority. Only exact personal-account ownership creates the initial controlled `OWNER`; organization access and multiple candidates fail closed.
 
 ### PostgreSQL system of record and job queue
 
@@ -95,7 +97,7 @@ Before a POST the durable publication becomes `AMBIGUOUS`. An uncertain outcome 
 
 The Next.js 16 App Router defaults to Server Components. Auth0 Universal Login owns OIDC state/PKCE and an encrypted HttpOnly browser session. Auth configuration and access tokens remain in `server-only` modules; the dashboard server obtains a token and calls Spring with bearer authentication. Spring does not trust the Next.js login assertion and validates the token independently. The access-token/profile SDK routes are unavailable, and no generic proxy exists.
 
-The browser is never a tenant authority. A verified `(issuer, subject)` resolves to an application user, then a membership, then an authorized tenant. Historical/unowned tenants are invisible; secure ownership binding is deferred rather than inferred from browser values, email, or GitHub identifiers. GitHub, OpenAI, auth client, webhook, and database secrets never enter `NEXT_PUBLIC_*` configuration or Client Components.
+The browser is never a tenant authority. A verified `(issuer, subject)` resolves to an application user, then a membership, then an authorized tenant. M13D1 can create the first membership only from server-verified personal GitHub installation ownership; browser/setup identifiers remain untrusted hints and are ignored by the implemented flow. GitHub, OpenAI, auth client, webhook, and database secrets never enter `NEXT_PUBLIC_*` configuration or Client Components.
 
 The request boundary generates a fresh CSP nonce and attaches strict production headers. React text escaping remains the display baseline. `/dashboard` is a Server Component that obtains the bounded session DTO, renders unauthenticated/unbound/error states, and selects a workspace only from returned memberships. An optional tenant query identifies a preference but never authorizes it; an unmatched value fails closed. Overview is the only functional dashboard section. Repositories, reviews, usage, settings, billing, and observability remain future scope.
 

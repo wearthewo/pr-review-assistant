@@ -17,6 +17,13 @@ import {
   type AuthenticatedDashboardSession,
 } from "@/lib/dashboard-session-core";
 import { selectAuthorizedTenant } from "@/lib/dashboard-selection";
+import {
+  connectionMessage,
+  dashboardPathForConnectionResult,
+  isTrustedMutationRequest,
+  validateCallbackValue,
+  validateGitHubAuthorizationUrl,
+} from "@/lib/github-connection-core";
 import { secureProxy } from "@/lib/proxy-core";
 import { BASE_SECURITY_HEADERS, buildContentSecurityPolicy } from "@/lib/security-headers";
 
@@ -177,8 +184,41 @@ test("membership-less state is explicit and never fabricates a tenant", () => {
   const html = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
     applicationUserId: USER_ID, memberships: [], onboardingRequired: true }} />);
   assert.match(html, /Connect your GitHub workspace next/);
-  assert.match(html, /Secure installation ownership verification is coming/);
+  assert.match(html, /action="\/github\/connect"/);
+  assert.match(html, /GitHub authorization verifies eligible personal installations server-side/);
   assert.doesNotMatch(html, /Workspace [0-9A-F]{8}|OWNER|MEMBER/);
+});
+
+test("GitHub connection mutation requires same-origin browser proof", () => {
+  const valid = new Request("https://app.example/github/connect", { method: "POST", headers: {
+    Origin: "https://app.example", "Sec-Fetch-Site": "same-origin",
+  } });
+  const crossSite = new Request("https://app.example/github/connect", { method: "POST", headers: {
+    Origin: "https://attacker.example", "Sec-Fetch-Site": "cross-site",
+  } });
+  assert.equal(isTrustedMutationRequest(valid, "https://app.example"), true);
+  assert.equal(isTrustedMutationRequest(crossSite, "https://app.example"), false);
+});
+
+test("GitHub authorization and callback redirects are constrained", () => {
+  assert.equal(validateGitHubAuthorizationUrl(
+    "https://github.com/login/oauth/authorize?client_id=x&state=y", "https://github.com").hostname, "github.com");
+  assert.throws(() => validateGitHubAuthorizationUrl(
+    "https://attacker.example/login/oauth/authorize", "https://github.com"), /not trusted/);
+  assert.throws(() => validateGitHubAuthorizationUrl(
+    "https://github.com.evil.example/login/oauth/authorize", "https://github.com"), /not trusted/);
+  assert.equal(validateCallbackValue("bounded-code"), "bounded-code");
+  assert.throws(() => validateCallbackValue("x".repeat(513)), /invalid/);
+  assert.equal(dashboardPathForConnectionResult("CONNECTED"), "/dashboard?connection=connected");
+  assert.equal(dashboardPathForConnectionResult("https://attacker.example"), "/dashboard?connection=failed");
+});
+
+test("connection results render bounded status without IDs or secrets", () => {
+  const message = connectionMessage("no-installation");
+  const html = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
+    applicationUserId: USER_ID, memberships: [], onboardingRequired: true }} connectionMessage={message} />);
+  assert.match(html, /No eligible installation found/);
+  assert.doesNotMatch(html, /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|server-only-access-token/i);
 });
 
 test("one authorized membership renders the tenant shell and backend role", () => {
@@ -311,10 +351,18 @@ test("production source has no browser token storage, raw HTML, or public secret
   const files = ["src/app/page.tsx", "src/app/dashboard/page.tsx", "src/app/error.tsx",
     "src/app/global-error.tsx", "src/components/display-text.tsx", "src/components/dashboard-view.tsx",
     "src/lib/server/auth0.ts", "src/lib/server/dashboard-session.ts", "src/lib/dashboard-session-core.ts",
-    "src/lib/dashboard-selection.ts"];
+    "src/lib/dashboard-selection.ts", "src/lib/github-connection-core.ts",
+    "src/lib/server/github-connection.ts", "src/app/github/connect/route.ts",
+    "src/app/github/callback/route.ts", "src/app/github/setup/route.ts"];
   const source = files.map((file) => readFileSync(join(frontendRoot, file), "utf8")).join("\n");
   const example = readFileSync(join(frontendRoot, "../.env.example"), "utf8");
   assert.doesNotMatch(source, /localStorage|sessionStorage|dangerouslySetInnerHTML|\beval\s*\(|new\s+Function\b/);
   assert.doesNotMatch(source, /NEXT_PUBLIC_/);
   assert.doesNotMatch(example, /NEXT_PUBLIC_.*(?:SECRET|TOKEN|KEY)/);
+});
+
+test("setup route ignores spoofable installation identifiers by construction", () => {
+  const source = readFileSync(join(frontendRoot, "src/app/github/setup/route.ts"), "utf8");
+  assert.doesNotMatch(source, /searchParams\.get\(["']installation_id/);
+  assert.match(source, /\/dashboard\?connection=setup/);
 });
