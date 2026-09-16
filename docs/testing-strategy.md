@@ -22,6 +22,8 @@ M13D1 adds deterministic service and mock-HTTP tests for state/PKCE, stable GitH
 
 M13D2 PostgreSQL/Spring integration tests prove OWNER and MEMBER reads, deterministic ordering, honest empty results, the 100-row bound, minimal allowlisted DTOs, authentication, malformed identifiers, and non-enumerating denial for cross-tenant, unknown, and unowned tenants. Frontend tests server-render repository gates and real DTOs, exercise empty/truncated/error states, reject malformed/oversized/out-of-order responses, keep bearer credentials server-only, and prove extra malicious display fields and fake operational metrics are not rendered.
 
+M13E PostgreSQL/Spring integration tests cover OWNER/MEMBER history reads, all supported job/publication state mappings, minimal DTO exposure, empty history, authentication and identifier failures, non-enumerating tenant isolation, default/maximum keyset pages, next-page behavior, and tenant-bound malformed cursor rejection. A focused service test proves one bounded store call using `pageSize + 1`, preventing N+1 reads. Frontend tests server-render gate, empty, state, pagination, and safe-error views; validate bounds, ordering, SHA/timestamps, controlled publication counts, and extra-field discarding; and prove credentials remain server-only. The full prior suite remains the regression gate.
+
 ## Test layers
 
 ### Unit tests

@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. In addition to the review pipeline and authenticated ownership boundary, M13D2 provides a narrow read-only tenant-repository dashboard API. It contains no repository mutation, review-history, usage, billing, or tenant-management dashboard API.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. In addition to the review pipeline and authenticated ownership boundary, M13D2 provides a tenant-repository API and M13E provides a bounded read-only review-history API. It contains no repository mutation, review detail, usage, billing, or tenant-management dashboard API.
 
 ## Requirements
 
@@ -56,6 +56,10 @@ External human identity is the bounded `(auth_issuer, auth_subject)` pair, never
 The API is stateless bearer-token authenticated. It does not read browser cookies, so CSRF is disabled for this backend boundary; CORS is not enabled. Browser requests go through Next.js rather than directly to Spring. Tokens, issuer/subject claims, and SQL details are absent from response DTOs and safe authorization errors.
 
 `GET /api/dashboard/tenants/{tenantId}/repositories` requires the same bearer authentication and independently invokes membership authorization for the path tenant before querying. The UUID identifies the requested workspace but never proves access. Unknown, foreign, and historical unowned tenants receive the same non-enumerating denial. The query reads at most 101 rows ordered by numeric GitHub repository ID, returns no more than 100, and exposes an explicit `truncated` flag. Each repository DTO contains only `repositoryId` and `connectedAt`; names, account, visibility, activation, configuration, and metrics are not present in M14 storage. The endpoint performs no GitHub request and no AI call.
+
+`GET /api/dashboard/tenants/{tenantId}/reviews` repeats the same exact membership authorization before one tenant-scoped JDBC query. It left-joins the unique publication for each target-bearing review job, orders by `review_jobs.created_at DESC, review_jobs.id DESC`, and uses the existing `(tenant_id, created_at, id)` index. `limit` defaults to 20 and is capped at 50; the store reads one extra row to determine `hasMore`. The optional opaque cursor is a canonical, maximum-160-character base64url encoding of tenant UUID, boundary timestamp, and job UUID. It is tenant-bound and strictly validated but never authorizes access.
+
+Each review DTO exposes only numeric repository ID, PR number, exact head SHA, a controlled dashboard state, optional accepted/publishable finding count, and created/aggregate-updated timestamps. Publication counts exist only for durable publication rows. `COMPLETED` without a publication remains the broad `COMPLETED_WITHOUT_PUBLICATION`; it is not called zero findings because the schema cannot distinguish every silent-completion reason. Claim tokens, retries, safe error codes, routing metadata, payloads, prompts, provider output, usage records, and internal IDs are omitted. The endpoint is observational: no GitHub/OpenAI call, token generation, worker execution, publication retry, or state mutation occurs.
 
 ## GitHub ownership bootstrap
 

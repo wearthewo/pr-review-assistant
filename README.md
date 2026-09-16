@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. M13D2 adds a real read-only repository dashboard over the existing tenant ownership records; repository mutation, review history, usage UI, settings, and billing remain unimplemented.
+> Project status: **pre-alpha**. M13E adds real, read-only tenant review history over existing durable job and publication state; detail views, usage UI, settings, billing, and repository mutation remain unimplemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -94,9 +94,13 @@ M13B uses Auth0 Universal Login as one production-capable OIDC path. Next.js kee
 
 M13C turns that boundary into a responsive, server-rendered dashboard shell. An authenticated user without membership sees a closed onboarding state; a member sees only memberships returned by Spring. The optional `tenant` query value identifies a desired membership, but the server renders it only after an exact match against that authenticated set. Unknown values disclose no tenant data and never fall back to another tenant. Overview contains descriptive pipeline and membership state only—no fabricated repository, review, finding, usage, quota, token, or spend metrics.
 
-Historical tenants remain valid and inaccessible until the M13D1 proof matches their existing personal installation. No user is attached from a tenant UUID, submitted installation ID, repository ID/name, organization, email, or domain. Organization onboarding still requires stronger server-verified authority. Reviews, Usage, and Settings remain disabled navigation foundations; repository mutation remains deferred.
+Historical tenants remain valid and inaccessible until the M13D1 proof matches their existing personal installation. No user is attached from a tenant UUID, submitted installation ID, repository ID/name, organization, email, or domain. Organization onboarding still requires stronger server-verified authority. Usage and Settings remain disabled navigation foundations; review history is read-only and repository mutation remains deferred.
 
 M13D2 makes Repositories the first tenant-resource dashboard. `GET /api/dashboard/tenants/{tenantId}/repositories` treats the path UUID only as a requested identifier, independently reauthorizes the JWT-backed application user through `tenant_memberships`, and then reads a bounded, deterministically ordered list from M14's `tenant_repositories`. The DTO exposes only the numeric GitHub repository ID and the time the ownership record was first stored. Repository names, visibility, enablement, configuration state, and review metrics are not persisted and are neither inferred nor fabricated. Ordinary dashboard rendering performs no GitHub or AI call; PostgreSQL is the available read model and may lag GitHub.
+
+M13E makes Reviews a second read-only tenant-resource page. A history entry is one target-bearing `review_jobs` execution; an optional `review_publications` row supplies the publication state and exact accepted/publishable finding count. Spring independently authorizes membership, then performs one bounded keyset query ordered by `(created_at DESC, id DESC)`. The default page is 20 and the maximum is 50. Cursors are bounded, canonical base64url values bound to the tenant, timestamp, and job boundary; they position a page and never authorize it. The UI displays numeric repository ID, PR number, abbreviated exact head SHA, controlled state, timestamp, and a publishable count only when a publication exists. It performs no GitHub, OpenAI, worker, retry, or mutation operation.
+
+The state mapping is deliberately conservative: `READY` becomes `QUEUED`, `PROCESSING` becomes `ANALYZING`, job `FAILED` becomes `ANALYSIS_FAILED`, and job `COMPLETED` without a publication becomes `COMPLETED_WITHOUT_PUBLICATION`. Publication state takes precedence: `PENDING`, `AMBIGUOUS`, `PUBLISHED`, and `FAILED` become `PUBLICATION_PENDING`, `PUBLICATION_UNCERTAIN`, `PUBLISHED`, and `PUBLICATION_FAILED`. Absence of a publication cannot prove zero findings, so the dashboard never labels that state as zero findings.
 
 The initial operator policy is confidence 85, minimum severity MEDIUM, and at most three publication candidates. Silence is better than a weak comment; zero accepted findings completes without a GitHub write.
 

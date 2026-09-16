@@ -233,7 +233,9 @@ function DashboardNavigation({ activeSection }: Readonly<{ activeSection: Dashbo
         <li><Link href="/dashboard" aria-current={activeSection === "Overview" ? "page" : undefined}>Overview</Link></li>
         <li><Link href="/dashboard/repositories"
           aria-current={activeSection === "Repositories" ? "page" : undefined}>Repositories</Link></li>
-        {navigation.filter((item) => item !== "Overview" && item !== "Repositories").map((item) => (
+        <li><Link href="/dashboard/reviews"
+          aria-current={activeSection === "Reviews" ? "page" : undefined}>Reviews</Link></li>
+        {navigation.filter((item) => !["Overview", "Repositories", "Reviews"].includes(item)).map((item) => (
           <li key={item}><span aria-disabled="true">{item}<small>Deferred</small></span></li>
         ))}
       </ul>

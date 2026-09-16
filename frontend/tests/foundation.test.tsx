@@ -9,6 +9,7 @@ import HomePage from "@/app/page";
 import { DashboardView } from "@/components/dashboard-view";
 import { DisplayText } from "@/components/display-text";
 import { RepositoriesView, RepositoryList } from "@/components/repositories-view";
+import { ReviewHistory, ReviewsView } from "@/components/reviews-view";
 import { resolveAuthEnvironment } from "@/lib/auth-environment-validation";
 import { resolveBackendOrigin } from "@/lib/backend-origin-validation";
 import {
@@ -22,6 +23,11 @@ import {
   DashboardRepositoryError,
   requestDashboardRepositories,
 } from "@/lib/dashboard-repositories-core";
+import {
+  DashboardReviewError,
+  requestDashboardReviews,
+  type DashboardReview,
+} from "@/lib/dashboard-reviews-core";
 import {
   connectionMessage,
   dashboardPathForConnectionResult,
@@ -289,7 +295,8 @@ test("repository navigation is functional while later sections remain deferred",
     onboardingRequired: false }} />);
   assert.match(html, /aria-current="page"[^>]*>Overview/);
   assert.match(html, /href="\/dashboard\/repositories"[^>]*>Repositories/);
-  assert.doesNotMatch(html, /href="\/dashboard\/(?:reviews|usage|settings)"/);
+  assert.match(html, /href="\/dashboard\/reviews"[^>]*>Reviews/);
+  assert.doesNotMatch(html, /href="\/dashboard\/(?:usage|settings)"/);
 });
 
 test("repositories route gates unauthenticated and unbound users without repository data", () => {
@@ -315,9 +322,135 @@ test("authorized repository DTO renders truthfully with active navigation and no
   assert.match(html, /2026-09-16 UTC/);
   assert.match(html, /MEMBER/);
   assert.doesNotMatch(html, /Enabled|Active|review count|findings|health|score|monthly usage|AI spend/i);
-  assert.match(html, /aria-disabled="true">Reviews/);
+  assert.match(html, /href="\/dashboard\/reviews"[^>]*>Reviews/);
   assert.match(html, /aria-disabled="true">Usage/);
   assert.match(html, /aria-disabled="true">Settings/);
+});
+
+test("reviews route gates unauthenticated and unbound users without history data", () => {
+  const unauthenticated = renderToStaticMarkup(<ReviewsView state={{ status: "gate",
+    dashboard: { status: "unauthenticated" } }} />);
+  const unbound = renderToStaticMarkup(<ReviewsView state={{ status: "gate", dashboard: {
+    status: "authenticated", applicationUserId: USER_ID, memberships: [], onboardingRequired: true,
+  } }} />);
+  assert.match(unauthenticated, /Sign in to your dashboard/);
+  assert.match(unbound, /Connect your GitHub workspace next/);
+  assert.doesNotMatch(`${unauthenticated}${unbound}`, /Pull request #42|Published to GitHub/);
+});
+
+test("authorized review history renders exact revisions and controlled truthful states", () => {
+  const reviews: DashboardReview[] = [
+    review({ state: "PUBLISHED", publishableFindingCount: 2, pullRequestNumber: 42 }),
+    review({ state: "PUBLICATION_PENDING", publishableFindingCount: 1,
+      pullRequestNumber: 41, createdAt: "2026-09-16T11:00:00Z" }),
+    review({ state: "PUBLICATION_UNCERTAIN", publishableFindingCount: 3,
+      pullRequestNumber: 40, createdAt: "2026-09-16T10:00:00Z" }),
+    review({ state: "PUBLICATION_FAILED", publishableFindingCount: 2,
+      pullRequestNumber: 39, createdAt: "2026-09-16T09:00:00Z" }),
+    review({ state: "COMPLETED_WITHOUT_PUBLICATION", pullRequestNumber: 38,
+      createdAt: "2026-09-16T08:00:00Z" }),
+    review({ state: "ANALYSIS_FAILED", pullRequestNumber: 37,
+      createdAt: "2026-09-16T07:00:00Z" }),
+    review({ state: "ANALYZING", pullRequestNumber: 36, createdAt: "2026-09-16T06:00:00Z" }),
+    review({ state: "QUEUED", pullRequestNumber: 35, createdAt: "2026-09-16T05:00:00Z" }),
+  ];
+  const html = renderToStaticMarkup(<ReviewsView state={{ status: "ready", selectedTenantId: TENANT_ID,
+    dashboard: { status: "authenticated", applicationUserId: USER_ID,
+      memberships: [{ tenantId: TENANT_ID, role: "MEMBER" }], onboardingRequired: false },
+    page: { reviews, hasMore: false, nextCursor: null },
+  }} />);
+  assert.match(html, /aria-current="page"[^>]*>Reviews/);
+  assert.match(html, /Repository #123456/);
+  assert.match(html, /Pull request #42/);
+  assert.match(html, /000000000000/);
+  for (const label of ["Published to GitHub", "Publication pending", "Publication outcome uncertain",
+    "Publication failed", "Completed without a publication record", "Analysis failed",
+    "Analysis in progress", "Queued"]) assert.match(html, new RegExp(label));
+  assert.match(html, /2 publishable findings/);
+  assert.doesNotMatch(html, /zero findings|review summary|Failure:|Provider:|Model:|token usage/i);
+  assert.doesNotMatch(html, /PR title|author|avatar|repository name|branch/i);
+  assert.ok(html.indexOf("Pull request #42") < html.indexOf("Pull request #41"));
+  assert.match(html, /aria-disabled="true">Usage/);
+  assert.match(html, /aria-disabled="true">Settings/);
+});
+
+test("review empty state and keyset continuation are explicit", () => {
+  const empty = renderToStaticMarkup(<ReviewHistory tenantId={TENANT_ID}
+    page={{ reviews: [], hasMore: false, nextCursor: null }} />);
+  const paged = renderToStaticMarkup(<ReviewHistory tenantId={TENANT_ID}
+    page={{ reviews: [review({})], hasMore: true, nextCursor: "safe_cursor-1" }} />);
+  assert.match(empty, /No review history is currently known/);
+  assert.match(paged, /Older reviews/);
+  assert.match(paged, /tenant=4bd9bba9-5c17-47f1-a5af-1666fd68d0c7/);
+  assert.match(paged, /cursor=safe_cursor-1/);
+});
+
+test("invalid review selection cursor and authorization failure fail closed", () => {
+  const dashboard = { status: "authenticated" as const, applicationUserId: USER_ID,
+    memberships: [{ tenantId: TENANT_ID, role: "OWNER" as const }], onboardingRequired: false };
+  const invalidTenant = renderToStaticMarkup(<ReviewsView state={{ status: "invalid-tenant", dashboard }} />);
+  const invalidCursor = renderToStaticMarkup(<ReviewsView state={{ status: "invalid-cursor", dashboard,
+    selectedTenantId: TENANT_ID }} />);
+  const denied = renderToStaticMarkup(<ReviewsView state={{ status: "review-error", dashboard,
+    selectedTenantId: TENANT_ID, kind: "AUTHORIZATION_FAILED" }} />);
+  assert.match(invalidTenant, /That workspace cannot be opened/);
+  assert.match(invalidCursor, /page cannot be opened/);
+  assert.match(denied, /could not be authorized/);
+  assert.doesNotMatch(`${invalidTenant}${invalidCursor}${denied}`, /Pull request #|Repository #/);
+});
+
+test("review client keeps bearer token server-side and allowlists DTO fields", async () => {
+  const secretToken = "review-server-token";
+  let authorization = "";
+  const page = await requestDashboardReviews(new URL("https://backend.example/reviews"), secretToken,
+    async (_input, init) => {
+      authorization = new Headers(init?.headers).get("Authorization") ?? "";
+      return new Response(JSON.stringify({ reviews: [{ ...review({}),
+        payload: "<script>steal()</script>", lastErrorCode: "SECRET_FAILURE" }],
+        hasMore: false, nextCursor: null }), { status: 200 });
+    });
+  assert.equal(authorization, `Bearer ${secretToken}`);
+  assert.deepEqual(Object.keys(page.reviews[0]).sort(), ["createdAt", "headSha", "publishableFindingCount",
+    "pullRequestNumber", "repositoryId", "state", "updatedAt"].sort());
+  const html = renderToStaticMarkup(<ReviewHistory tenantId={TENANT_ID} page={page} />);
+  assert.doesNotMatch(html, /script|steal|SECRET_FAILURE|review-server-token/i);
+});
+
+test("review client rejects malformed oversized out-of-order and invalid-count responses", async () => {
+  const url = new URL("https://backend.example/reviews");
+  const token = "never-expose-review-token";
+  const invalidBodies = [
+    "not-json",
+    JSON.stringify({ reviews: [review({ state: "PUBLISHED", publishableFindingCount: null })],
+      hasMore: false, nextCursor: null }),
+    JSON.stringify({ reviews: [review({ createdAt: "2026-09-16T10:00:00Z" }),
+      review({ pullRequestNumber: 2, createdAt: "2026-09-16T11:00:00Z" })], hasMore: false, nextCursor: null }),
+    JSON.stringify({ reviews: [], hasMore: true, nextCursor: "bad cursor" }),
+  ];
+  for (const body of invalidBodies) {
+    await assert.rejects(requestDashboardReviews(url, token,
+      async () => new Response(body, { status: 200 })),
+    (error: DashboardReviewError) => error.kind === "BACKEND_RESPONSE_INVALID"
+      && !error.toString().includes(token));
+  }
+  await assert.rejects(requestDashboardReviews(url, token, async () => new Response("x", {
+    status: 200, headers: { "Content-Length": String(193 * 1024) },
+  })), (error: DashboardReviewError) => error.kind === "BACKEND_RESPONSE_INVALID");
+});
+
+test("review timeout unavailable auth and invalid cursor responses are safely classified", async () => {
+  const url = new URL("https://backend.example/reviews");
+  const token = "review-secret";
+  const cases: readonly [() => Promise<Response>, string][] = [
+    [async () => { throw new DOMException("timed out", "TimeoutError"); }, "BACKEND_TIMEOUT"],
+    [async () => new Response("failure", { status: 500 }), "BACKEND_UNAVAILABLE"],
+    [async () => new Response("denied", { status: 404 }), "AUTHORIZATION_FAILED"],
+    [async () => new Response("invalid", { status: 400 }), "INVALID_CURSOR"],
+  ];
+  for (const [fetcher, kind] of cases) {
+    await assert.rejects(requestDashboardReviews(url, token, fetcher),
+      (error: DashboardReviewError) => error.kind === kind && !error.toString().includes(token));
+  }
 });
 
 test("repository empty and bounded states are explicit", () => {
@@ -431,8 +564,11 @@ test("desktop and mobile dashboard navigation use accessible native landmarks", 
 test("server-only boundaries and Auth0 session protections are configured", () => {
   const backendBoundary = readFileSync(join(frontendRoot, "src/lib/server/backend-api.ts"), "utf8");
   const authBoundary = readFileSync(join(frontendRoot, "src/lib/server/auth0.ts"), "utf8");
+  const reviewsBoundary = readFileSync(join(frontendRoot, "src/lib/server/dashboard-reviews.ts"), "utf8");
   assert.match(backendBoundary, /import "server-only"/);
   assert.match(authBoundary, /import "server-only"/);
+  assert.match(reviewsBoundary, /import "server-only"/);
+  assert.doesNotMatch(reviewsBoundary, /"use client"|window\.|document\./);
   assert.match(authBoundary, /enableAccessTokenEndpoint: false/);
   assert.match(authBoundary, /signInReturnToPath: "\/dashboard"/);
   assert.match(authBoundary, /sameSite: "lax"/);
@@ -447,6 +583,8 @@ test("production source has no browser token storage, raw HTML, or public secret
     "src/lib/dashboard-selection.ts", "src/lib/github-connection-core.ts",
     "src/lib/dashboard-repositories-core.ts", "src/lib/server/dashboard-repositories.ts",
     "src/components/repositories-view.tsx", "src/app/dashboard/repositories/page.tsx",
+    "src/lib/dashboard-reviews-core.ts", "src/lib/server/dashboard-reviews.ts",
+    "src/components/reviews-view.tsx", "src/app/dashboard/reviews/page.tsx",
     "src/lib/server/github-connection.ts", "src/app/github/connect/route.ts",
     "src/app/github/callback/route.ts", "src/app/github/setup/route.ts"];
   const source = files.map((file) => readFileSync(join(frontendRoot, file), "utf8")).join("\n");
@@ -455,6 +593,19 @@ test("production source has no browser token storage, raw HTML, or public secret
   assert.doesNotMatch(source, /NEXT_PUBLIC_/);
   assert.doesNotMatch(example, /NEXT_PUBLIC_.*(?:SECRET|TOKEN|KEY)/);
 });
+
+function review(overrides: Partial<DashboardReview>): DashboardReview {
+  return {
+    repositoryId: 123456,
+    pullRequestNumber: 1,
+    headSha: "0".repeat(40),
+    state: "COMPLETED_WITHOUT_PUBLICATION",
+    publishableFindingCount: null,
+    createdAt: "2026-09-16T12:00:00Z",
+    updatedAt: "2026-09-16T12:00:01Z",
+    ...overrides,
+  };
+}
 
 test("setup route ignores spoofable installation identifiers by construction", () => {
   const source = readFileSync(join(frontendRoot, "src/app/github/setup/route.ts"), "utf8");
