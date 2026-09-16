@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M15. M13D2 adds a bounded read-only repository dashboard over M14 ownership state; repository mutation and later dashboard product operations remain absent.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M15. M13E adds bounded read-only review history over existing job/publication state; review detail, repository mutation, and later dashboard product operations remain absent.
 
 ## System context
 
@@ -99,9 +99,11 @@ The Next.js 16 App Router defaults to Server Components. Auth0 Universal Login o
 
 The browser is never a tenant authority. A verified `(issuer, subject)` resolves to an application user, then a membership, then an authorized tenant. M13D1 can create the first membership only from server-verified personal GitHub installation ownership; browser/setup identifiers remain untrusted hints and are ignored by the implemented flow. GitHub, OpenAI, auth client, webhook, and database secrets never enter `NEXT_PUBLIC_*` configuration or Client Components.
 
-The request boundary generates a fresh CSP nonce and attaches strict production headers. React text escaping remains the display baseline. `/dashboard` is a Server Component that obtains the bounded session DTO, renders unauthenticated/unbound/error states, and selects a workspace only from returned memberships. An optional tenant query identifies a preference but never authorizes it; an unmatched value fails closed. Overview and the read-only Repositories section are functional; reviews, usage, settings, billing, and observability remain future scope.
+The request boundary generates a fresh CSP nonce and attaches strict production headers. React text escaping remains the display baseline. `/dashboard` is a Server Component that obtains the bounded session DTO, renders unauthenticated/unbound/error states, and selects a workspace only from returned memberships. An optional tenant query identifies a preference but never authorizes it; an unmatched value fails closed. Overview and the read-only Repositories and Reviews sections are functional; usage, settings, billing, and observability remain future scope.
 
 The repository page sends the selected authorized identifier server-to-server to `GET /api/dashboard/tenants/{tenantId}/repositories`. Spring repeats membership authorization before a tenant-scoped PostgreSQL query; prior session selection alone is never sufficient. M14 `tenant_repositories` is the bounded dashboard read model, while GitHub remains the external source of truth. Results are ordered by numeric GitHub repository ID and limited to 100 with explicit truncation. No live GitHub, token-generation, AI, configuration, or per-repository request occurs. The DTO deliberately omits unavailable display names and all inferred status or metrics.
+
+The Reviews page uses the same server-only and independently reauthorized path through `GET /api/dashboard/tenants/{tenantId}/reviews`. A history entry is a target-bearing `review_jobs` row, with its optional unique `review_publications` row left-joined in the same bounded query. The existing tenant/created/id index supports reverse keyset traversal. Ordering is `(created_at DESC, id DESC)`; pages default to 20 and cap at 50. The canonical base64url cursor carries only tenant-bound boundary data and remains non-authoritative. Analysis status and publication status remain distinct, publication state takes precedence when present, and absent publication is never interpreted as zero findings. PostgreSQL is the complete history read model; reads trigger no provider or worker behavior.
 
 ### Infrastructure and delivery
 
