@@ -2,7 +2,7 @@
 
 ## Current state
 
-The backend is complete through M15. M13B adds Auth0 OIDC authentication, durable application users/memberships, and a minimal protected dashboard-session path to the Node.js 24 LTS / Next.js 16.3.5 frontend. It contains no repository/review/usage dashboard, secure tenant-claim workflow, billing, CI/CD workflow, or deployment definition.
+The backend is complete through M15. M13C builds a responsive Overview shell on the accepted Auth0 and dashboard-session path in the Node.js 24 LTS / Next.js 16.3.5 frontend. It contains no repository/review/usage/settings feature, secure tenant-claim workflow, billing, CI/CD workflow, or deployment definition.
 
 ## Prerequisites
 
@@ -58,6 +58,8 @@ Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` before 
 Production CSP uses a fresh request nonce and permits neither `unsafe-inline` nor `unsafe-eval`. Development permits `unsafe-eval` only for Next.js tooling. The same proxy dispatches the restricted Auth0 routes, rejects non-fixed login return targets, and preserves the M13A headers. `/dashboard` uses the server session to call Spring; tokens must stay in server-only modules.
 
 The backend requires `DASHBOARD_AUTH_ISSUER`, `DASHBOARD_AUTH_AUDIENCE`, and `DASHBOARD_AUTH_JWK_SET_URI`. The issuer and JWK URI must be same-origin HTTPS (loopback HTTP is test/local only). Keep the configured audience identical to `AUTH0_AUDIENCE`. Blank auth configuration leaves dashboard requests closed; partial configuration prevents startup. The browser must not call Spring directly and no CORS allowance is needed.
+
+For local dashboard checks, `/dashboard` renders sign-in when no session exists. An authenticated membership-less user gets the closed GitHub-connection onboarding state. Real memberships render the Overview shell. Multiple memberships may be selected with the native workspace form; the resulting `tenant` query value is matched against the fresh authenticated DTO on the server and is never stored in browser storage or treated as authorization. Repositories, Reviews, Usage, and Settings remain disabled labels.
 
 M13B intentionally has no membership creation API. Existing tenants are not assigned on login. Until a future server-verified GitHub ownership proof creates a membership, authenticated users receive only the onboarding-required state. Never bootstrap with email/domain matching or a submitted tenant, installation, repository, or organization identifier.
 

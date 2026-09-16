@@ -20,7 +20,33 @@ export interface UnauthenticatedDashboardSession {
   status: "unauthenticated";
 }
 
-export type DashboardState = AuthenticatedDashboardSession | UnauthenticatedDashboardSession;
+export type DashboardFailureKind =
+  | "AUTHORIZATION_FAILED"
+  | "BACKEND_RESPONSE_INVALID"
+  | "BACKEND_TIMEOUT"
+  | "BACKEND_UNAVAILABLE"
+  | "SESSION_UNAVAILABLE";
+
+export interface FailedDashboardSession {
+  status: "error";
+  kind: DashboardFailureKind;
+}
+
+export type DashboardState =
+  | AuthenticatedDashboardSession
+  | FailedDashboardSession
+  | UnauthenticatedDashboardSession;
+
+export class DashboardSessionError extends Error {
+  constructor(readonly kind: DashboardFailureKind) {
+    super("Dashboard session is unavailable");
+    this.name = "DashboardSessionError";
+  }
+
+  override toString(): string {
+    return `${this.name}{kind=${this.kind}}`;
+  }
+}
 
 export interface ServerAuthentication {
   hasSession(): Promise<boolean>;
@@ -34,7 +60,14 @@ export async function loadDashboardStateWith(
   if (!await authentication.hasSession()) {
     return { status: "unauthenticated" };
   }
-  return requestSession(await authentication.accessToken());
+  try {
+    return await requestSession(await authentication.accessToken());
+  } catch (error) {
+    return {
+      status: "error",
+      kind: error instanceof DashboardSessionError ? error.kind : "BACKEND_UNAVAILABLE",
+    };
+  }
 }
 
 export async function requestDashboardSession(
@@ -43,35 +76,46 @@ export async function requestDashboardSession(
   fetchImplementation: typeof fetch,
 ): Promise<AuthenticatedDashboardSession> {
   if (!token) {
-    throw new Error("Authenticated backend session is unavailable");
+    throw new DashboardSessionError("SESSION_UNAVAILABLE");
   }
-  const response = await fetchImplementation(url, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    cache: "no-store",
-    redirect: "error",
-    signal: AbortSignal.timeout(5_000),
-  });
+  let response: Response;
+  try {
+    response = await fetchImplementation(url, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch (error) {
+    if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      throw new DashboardSessionError("BACKEND_TIMEOUT");
+    }
+    throw new DashboardSessionError("BACKEND_UNAVAILABLE");
+  }
+  if (response.status === 401 || response.status === 403) {
+    throw new DashboardSessionError("AUTHORIZATION_FAILED");
+  }
   if (!response.ok) {
-    throw new Error("Authenticated backend session request failed");
+    throw new DashboardSessionError("BACKEND_UNAVAILABLE");
   }
   const declaredLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
-    throw new Error("Authenticated backend session response is invalid");
+    throw new DashboardSessionError("BACKEND_RESPONSE_INVALID");
   }
   const body = await response.text();
   if (new TextEncoder().encode(body).byteLength > MAX_RESPONSE_BYTES) {
-    throw new Error("Authenticated backend session response is invalid");
+    throw new DashboardSessionError("BACKEND_RESPONSE_INVALID");
   }
 
   let value: unknown;
   try {
     value = JSON.parse(body);
   } catch {
-    throw new Error("Authenticated backend session response is invalid");
+    throw new DashboardSessionError("BACKEND_RESPONSE_INVALID");
   }
   return validateSession(value);
 }
@@ -82,17 +126,20 @@ function validateSession(value: unknown): AuthenticatedDashboardSession {
       || !Array.isArray(value.memberships)
       || value.memberships.length > MAX_MEMBERSHIPS
       || typeof value.onboardingRequired !== "boolean") {
-    throw new Error("Authenticated backend session response is invalid");
+    throw new DashboardSessionError("BACKEND_RESPONSE_INVALID");
   }
   const memberships = value.memberships.map((entry) => {
     if (!isObject(entry) || !isUuid(entry.tenantId) || (entry.role !== "OWNER" && entry.role !== "MEMBER")) {
-      throw new Error("Authenticated backend session response is invalid");
+      throw new DashboardSessionError("BACKEND_RESPONSE_INVALID");
     }
     const role: MembershipRole = entry.role;
     return { tenantId: entry.tenantId, role };
   });
+  if (new Set(memberships.map(({ tenantId }) => tenantId)).size !== memberships.length) {
+    throw new DashboardSessionError("BACKEND_RESPONSE_INVALID");
+  }
   if (value.onboardingRequired !== (memberships.length === 0)) {
-    throw new Error("Authenticated backend session response is invalid");
+    throw new DashboardSessionError("BACKEND_RESPONSE_INVALID");
   }
   return {
     status: "authenticated",

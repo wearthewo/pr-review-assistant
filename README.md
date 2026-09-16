@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. M13B adds human authentication and tenant-membership authorization; product dashboard features remain unimplemented.
+> Project status: **pre-alpha**. M13C adds the authenticated dashboard shell and honest overview; repository, review-history, usage, settings, and billing features remain unimplemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -88,7 +88,9 @@ After startup, `GET http://localhost:8080/actuator/health` is the operational en
 
 M13B uses Auth0 Universal Login as one production-capable OIDC path. Next.js keeps the encrypted session in an HttpOnly cookie and obtains access tokens only on the server. It calls `GET /api/dashboard/session` with `Authorization: Bearer`; Spring independently validates RS256 signature, expiry/not-before, issuer, and audience before provisioning an internal user keyed by `(issuer, subject)` and resolving durable tenant memberships. The browser never supplies an authoritative tenant identity.
 
-Historical tenants remain valid but unowned for dashboard purposes. No user is automatically attached from a tenant UUID, installation ID, repository ID/name, organization, email, or domain. An authenticated user without a server-verified membership sees a closed onboarding state and no tenant data. A future GitHub-authorized ownership proof is required to create the first membership; repository, review-history, usage, billing, and tenant-management screens remain deferred.
+M13C turns that boundary into a responsive, server-rendered dashboard shell. An authenticated user without membership sees a closed onboarding state; a member sees only memberships returned by Spring. The optional `tenant` query value identifies a desired membership, but the server renders it only after an exact match against that authenticated set. Unknown values disclose no tenant data and never fall back to another tenant. Overview contains descriptive pipeline and membership state only—no fabricated repository, review, finding, usage, quota, token, or spend metrics.
+
+Historical tenants remain valid but unowned for dashboard purposes. No user is automatically attached from a tenant UUID, installation ID, repository ID/name, organization, email, or domain. A future GitHub-authorized ownership proof is required to create the first membership. Repositories, Reviews, Usage, and Settings appear only as disabled navigation foundations; their routes, APIs, mutations, and product data remain deferred.
 
 The initial operator policy is confidence 85, minimum severity MEDIUM, and at most three publication candidates. Silence is better than a weak comment; zero accepted findings completes without a GitHub write.
 
