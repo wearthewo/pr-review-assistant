@@ -24,6 +24,8 @@ M13D2 PostgreSQL/Spring integration tests prove OWNER and MEMBER reads, determin
 
 M13E PostgreSQL/Spring integration tests cover OWNER/MEMBER history reads, all supported job/publication state mappings, minimal DTO exposure, empty history, authentication and identifier failures, non-enumerating tenant isolation, default/maximum keyset pages, next-page behavior, and tenant-bound malformed cursor rejection. A focused service test proves one bounded store call using `pageSize + 1`, preventing N+1 reads. Frontend tests server-render gate, empty, state, pagination, and safe-error views; validate bounds, ordering, SHA/timestamps, controlled publication counts, and extra-field discarding; and prove credentials remain server-only. The full prior suite remains the regression gate.
 
+M13F PostgreSQL/Spring integration tests cover OWNER/MEMBER reads, non-enumerating cross-tenant and unowned denial, unauthenticated/malformed requests, zero usage, authoritative configured limit, `RESERVED`/`CONSUMED` inclusion, `RELEASED` exclusion, exact half-open UTC boundaries, over-limit clamping, allowlisted DTOs, and read-only behavior. Unit coverage proves authorization occurs before one quota-service read and exercises December-to-January and leap-February boundaries. Frontend tests cover gates, zero/partial/exhausted/over-limit rendering, accessible capped progress, strict numeric/date/period validation, response bounds, safe failures, server-only credentials, and the absence of plan, price, token, or cost claims.
+
 ## Test layers
 
 ### Unit tests

@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. In addition to the review pipeline and authenticated ownership boundary, M13D2 provides a tenant-repository API and M13E provides a bounded read-only review-history API. It contains no repository mutation, review detail, usage, billing, or tenant-management dashboard API.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. In addition to the review pipeline and authenticated ownership boundary, M13D2 provides a tenant-repository API, M13E provides bounded read-only review history, and M13F provides current-period quota usage. It contains no repository mutation, review detail, billing, quota mutation, or tenant-management dashboard API.
 
 ## Requirements
 
@@ -60,6 +60,8 @@ The API is stateless bearer-token authenticated. It does not read browser cookie
 `GET /api/dashboard/tenants/{tenantId}/reviews` repeats the same exact membership authorization before one tenant-scoped JDBC query. It left-joins the unique publication for each target-bearing review job, orders by `review_jobs.created_at DESC, review_jobs.id DESC`, and uses the existing `(tenant_id, created_at, id)` index. `limit` defaults to 20 and is capped at 50; the store reads one extra row to determine `hasMore`. The optional opaque cursor is a canonical, maximum-160-character base64url encoding of tenant UUID, boundary timestamp, and job UUID. It is tenant-bound and strictly validated but never authorizes access.
 
 Each review DTO exposes only numeric repository ID, PR number, exact head SHA, a controlled dashboard state, optional accepted/publishable finding count, and created/aggregate-updated timestamps. Publication counts exist only for durable publication rows. `COMPLETED` without a publication remains the broad `COMPLETED_WITHOUT_PUBLICATION`; it is not called zero findings because the schema cannot distinguish every silent-completion reason. Claim tokens, retries, safe error codes, routing metadata, payloads, prompts, provider output, usage records, and internal IDs are omitted. The endpoint is observational: no GitHub/OpenAI call, token generation, worker execution, publication retry, or state mutation occurs.
+
+`GET /api/dashboard/tenants/{tenantId}/usage` repeats membership authorization before calling the existing M15 accounting service. The service uses the configured `REVIEW_USAGE_MONTHLY_LIMIT` and `UsagePeriod.utcMonthContaining(Clock.instant())`; the store performs one indexed aggregate over the tenant, `REVIEW_ANALYSIS`, and `[periodStart, periodEnd)`. `RESERVED` and `CONSUMED` count, while `RELEASED` does not. The DTO exposes only `periodStart`, `periodEnd`, `limit`, `used`, and `remaining`. Remaining is clamped to zero for historical over-limit state. The GET acquires no quota advisory lock and performs no accounting mutation, GitHub request, provider request, or installation-token operation.
 
 ## GitHub ownership bootstrap
 
@@ -161,7 +163,7 @@ M15 reserves one tenant usage event immediately before the first logical AI anal
 
 `REVIEW_USAGE_MONTHLY_LIMIT` defaults to `50` and is validated from 1 through 100000. Quota windows are half-open UTC calendar months. `RESERVED` and `CONSUMED` rows count toward the limit; `RELEASED` rows remain auditable but do not. PostgreSQL transaction advisory locks serialize decisions for a tenant and month, and the database uniqueness constraint remains the idempotency safeguard under concurrent workers.
 
-Provider/model identifiers and optional provider-reported input, cached-input, output, reasoning-output, and total token counts may be retained as bounded operational metadata. Unknown values stay null; summaries identify partial totals rather than treating unknown as zero. Source, prompts, raw output, prices, credentials, and provider error bodies are never usage data. An ambiguous process/provider outcome leaves its reservation active and blocks a duplicate paid call. Automated reconciliation/release, billing, plans, and public usage APIs are deferred.
+Provider/model identifiers and optional provider-reported input, cached-input, output, reasoning-output, and total token counts may be retained as bounded operational metadata. Unknown values stay null; summaries identify partial totals rather than treating unknown as zero. Source, prompts, raw output, prices, credentials, and provider error bodies are never usage data. An ambiguous process/provider outcome leaves its reservation active and blocks a duplicate paid call. Automated reconciliation/release, billing, plans, historical charts, and quota mutation are deferred. M13F exposes only the authenticated tenant's bounded current-period quota totals.
 
 ## Review-job worker foundation
 

@@ -118,7 +118,9 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 - Reservations commit before AI and consumption commits afterward; no database transaction spans provider work. `RESERVED` and `CONSUMED` count against quota. Ambiguous reservations remain active and block a duplicate potentially paid call.
 - Repository content, webhook fields, and `.reviewbot.yml` cannot set tenant identity, quota, usage state, provider, model, token counts, plan, or price. The monthly limit is operator-owned configuration.
 - Usage metadata is limited to bounded safe provider/model identifiers and optional nonnegative provider-reported token counts. Unknown stays unknown. Source, prompts, raw output, error bodies, credentials, authorization data, stack traces, and monetary calculations are excluded.
-- Release is an explicit monotonic state transition retained for auditability; there is no automatic expiry or deletion. Reconciliation, billing, invoices, plans, retention, and public usage APIs remain future security designs.
+- Release is an explicit monotonic state transition retained for auditability; there is no automatic expiry or deletion. Reconciliation, billing, invoices, plans, and retention remain future security designs.
+- The M13F tenant usage endpoint independently authorizes membership, returns only bounded current-period totals, and uses the existing UTC period and quota policy. A path tenant UUID identifies but never authorizes. Cross-tenant, unknown, and unowned tenants receive the same non-enumerating denial. Raw accounting rows, token measurements, provider/model metadata, plans, prices, and internal identifiers are not exposed.
+- Usage reads execute no usage-ledger state change and acquire no quota advisory lock. `RESERVED` remains counted alongside `CONSUMED`; the UI calls this quota usage rather than completed or published work. `RELEASED` is excluded, and remaining capacity is never negative.
 
 ### Frontend foundation controls implemented in M13A
 

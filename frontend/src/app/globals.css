@@ -274,6 +274,24 @@ h2 { font-size: clamp(2rem, 4vw, 3.4rem); }
 .review-pagination { display: flex; justify-content: flex-end; padding-top: 1.25rem; }
 .review-footnote { margin: 1.5rem 0 0; font-size: 0.88rem; }
 
+.usage-header { display: flex; align-items: start; justify-content: space-between; gap: 2rem; }
+.usage-panel, .usage-state { margin-top: 2rem; padding: 1.5rem; border: 1px solid var(--border); border-radius: 0.8rem; background: var(--surface-strong); }
+.usage-panel { max-width: 900px; }
+.usage-state { max-width: 780px; }
+.usage-state h2, .usage-panel h2 { font-size: clamp(1.35rem, 2.5vw, 1.8rem); letter-spacing: -0.025em; }
+.usage-state > p:not(.section-kicker), .usage-note { color: var(--muted); }
+.quota-state { padding: 0.25rem 0.6rem; border: 1px solid var(--border); border-radius: 999px; color: var(--accent-strong); background: var(--accent-soft); font-size: 0.75rem; font-weight: 750; }
+.quota-state.quota-exhausted { color: #a52b2b; background: rgba(190, 45, 45, 0.1); }
+.quota-total { margin: 2rem 0 0.75rem; color: var(--muted); }
+.quota-total strong { color: var(--text); font-size: 1.4rem; }
+.usage-panel progress { display: block; width: 100%; height: 0.8rem; accent-color: var(--accent); }
+.quota-details { display: flex; justify-content: space-between; gap: 1rem; margin-top: 0.65rem; color: var(--muted); font-size: 0.82rem; }
+.usage-period { display: grid; gap: 0.75rem; margin: 2rem 0 0; }
+.usage-period div { display: grid; grid-template-columns: minmax(150px, 0.35fr) 1fr; gap: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+.usage-period dt { color: var(--muted); }
+.usage-period dd { margin: 0; }
+.usage-note { margin: 1.5rem 0 0; font-size: 0.88rem; }
+
 .muted { color: var(--muted); }
 
 .centered-state {
@@ -331,6 +349,8 @@ h2 { font-size: clamp(2rem, 4vw, 3.4rem); }
   .repository-list li { grid-template-columns: 1fr; gap: 0.75rem; }
   .review-list li { grid-template-columns: 1fr; gap: 0.7rem; }
   .review-list time { text-align: left; }
+  .usage-header { display: grid; }
+  .quota-details, .usage-period div { display: grid; grid-template-columns: 1fr; gap: 0.35rem; }
   .section-heading { flex-direction: column; }
   .section-heading > p { text-align: left; }
 }
