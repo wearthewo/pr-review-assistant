@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. In addition to the review pipeline and authenticated ownership boundary, M13D2 provides a tenant-repository API, M13E provides bounded read-only review history, and M13F provides current-period quota usage. It contains no repository mutation, review detail, billing, quota mutation, or tenant-management dashboard API.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. In addition to the review pipeline and authenticated ownership boundary, it provides bounded read-only tenant repository, review-history, and current-period quota APIs. M13G verifies these APIs together through the same application-user/membership boundary against PostgreSQL. It contains no repository mutation, review detail, billing, quota mutation, or tenant-management dashboard API.
 
 ## Requirements
 
@@ -62,6 +62,8 @@ The API is stateless bearer-token authenticated. It does not read browser cookie
 Each review DTO exposes only numeric repository ID, PR number, exact head SHA, a controlled dashboard state, optional accepted/publishable finding count, and created/aggregate-updated timestamps. Publication counts exist only for durable publication rows. `COMPLETED` without a publication remains the broad `COMPLETED_WITHOUT_PUBLICATION`; it is not called zero findings because the schema cannot distinguish every silent-completion reason. Claim tokens, retries, safe error codes, routing metadata, payloads, prompts, provider output, usage records, and internal IDs are omitted. The endpoint is observational: no GitHub/OpenAI call, token generation, worker execution, publication retry, or state mutation occurs.
 
 `GET /api/dashboard/tenants/{tenantId}/usage` repeats membership authorization before calling the existing M15 accounting service. The service uses the configured `REVIEW_USAGE_MONTHLY_LIMIT` and `UsagePeriod.utcMonthContaining(Clock.instant())`; the store performs one indexed aggregate over the tenant, `REVIEW_ANALYSIS`, and `[periodStart, periodEnd)`. `RESERVED` and `CONSUMED` count, while `RELEASED` does not. The DTO exposes only `periodStart`, `periodEnd`, `limit`, `used`, and `remaining`. Remaining is clamped to zero for historical over-limit state. The GET acquires no quota advisory lock and performs no accounting mutation, GitHub request, provider request, or installation-token operation.
+
+M13G's cross-feature integration fixture provisions two distinguishable tenants and proves that OWNER and MEMBER session results lead to coherent repository, review, and usage reads. It then attacks all three endpoints with the other tenant's known UUID, repository ID, and installation ID; each endpoint independently denies access through the real membership service. The fixture mocks only the already-verified JWT decoder boundary and uses PostgreSQL 18.6 with Flyway V1-V8.
 
 ## GitHub ownership bootstrap
 

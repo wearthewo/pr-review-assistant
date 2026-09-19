@@ -301,9 +301,9 @@ test("implemented dashboard navigation is functional while settings remains defe
     applicationUserId: USER_ID, memberships: [{ tenantId: TENANT_ID, role: "MEMBER" }],
     onboardingRequired: false }} />);
   assert.match(html, /aria-current="page"[^>]*>Overview/);
-  assert.match(html, /href="\/dashboard\/repositories"[^>]*>Repositories/);
-  assert.match(html, /href="\/dashboard\/reviews"[^>]*>Reviews/);
-  assert.match(html, /href="\/dashboard\/usage"[^>]*>Usage/);
+  assert.match(html, new RegExp(`href="/dashboard/repositories\\?tenant=${TENANT_ID}"[^>]*>Repositories`));
+  assert.match(html, new RegExp(`href="/dashboard/reviews\\?tenant=${TENANT_ID}"[^>]*>Reviews`));
+  assert.match(html, new RegExp(`href="/dashboard/usage\\?tenant=${TENANT_ID}"[^>]*>Usage`));
   assert.doesNotMatch(html, /href="\/dashboard\/settings"/);
 });
 
@@ -330,8 +330,8 @@ test("authorized repository DTO renders truthfully with active navigation and no
   assert.match(html, /2026-09-16 UTC/);
   assert.match(html, /MEMBER/);
   assert.doesNotMatch(html, /Enabled|Active|review count|findings|health|score|monthly usage|AI spend/i);
-  assert.match(html, /href="\/dashboard\/reviews"[^>]*>Reviews/);
-  assert.match(html, /href="\/dashboard\/usage"[^>]*>Usage/);
+  assert.match(html, new RegExp(`href="/dashboard/reviews\\?tenant=${TENANT_ID}"[^>]*>Reviews`));
+  assert.match(html, new RegExp(`href="/dashboard/usage\\?tenant=${TENANT_ID}"[^>]*>Usage`));
   assert.match(html, /aria-disabled="true">Settings/);
 });
 
@@ -378,7 +378,7 @@ test("authorized review history renders exact revisions and controlled truthful 
   assert.doesNotMatch(html, /zero findings|review summary|Failure:|Provider:|Model:|token usage/i);
   assert.doesNotMatch(html, /PR title|author|avatar|repository name|branch/i);
   assert.ok(html.indexOf("Pull request #42") < html.indexOf("Pull request #41"));
-  assert.match(html, /href="\/dashboard\/usage"[^>]*>Usage/);
+  assert.match(html, new RegExp(`href="/dashboard/usage\\?tenant=${TENANT_ID}"[^>]*>Usage`));
   assert.match(html, /aria-disabled="true">Settings/);
 });
 
@@ -408,8 +408,8 @@ test("authorized usage renders real quota semantics UTC period and active naviga
   assert.match(html, /UTC, start inclusive and end exclusive/);
   assert.match(html, /reserved and consumed/i);
   assert.match(html, /Released reservations do not count/);
-  assert.match(html, /href="\/dashboard\/repositories"[^>]*>Repositories/);
-  assert.match(html, /href="\/dashboard\/reviews"[^>]*>Reviews/);
+  assert.match(html, new RegExp(`href="/dashboard/repositories\\?tenant=${TENANT_ID}"[^>]*>Repositories`));
+  assert.match(html, new RegExp(`href="/dashboard/reviews\\?tenant=${TENANT_ID}"[^>]*>Reviews`));
   assert.match(html, /aria-disabled="true">Settings/);
   assert.doesNotMatch(html, /completed reviews|Free plan|pricing|upgrade|Stripe|\$\d|tokens used/i);
 });
@@ -747,4 +747,41 @@ test("setup route ignores spoofable installation identifiers by construction", (
   const source = readFileSync(join(frontendRoot, "src/app/github/setup/route.ts"), "utf8");
   assert.doesNotMatch(source, /searchParams\.get\(["']installation_id/);
   assert.match(source, /\/dashboard\?connection=setup/);
+});
+
+test("dashboard navigation preserves only the selected authorized workspace identifier", () => {
+  const html = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
+    applicationUserId: USER_ID, memberships: [
+      { tenantId: TENANT_ID, role: "OWNER" },
+      { tenantId: SECOND_TENANT_ID, role: "MEMBER" },
+    ], onboardingRequired: false }} requestedTenantId={TENANT_ID} />);
+  for (const path of ["/dashboard", "/dashboard/repositories", "/dashboard/reviews", "/dashboard/usage"]) {
+    assert.match(html, new RegExp(`href="${path.replaceAll("/", "\\/")}\\?tenant=${TENANT_ID}"`));
+  }
+  assert.doesNotMatch(html, /tenantOverride|accessToken|cursor=/);
+});
+
+test("all dashboard clients cancel incrementally oversized chunked responses", async () => {
+  const clients: readonly [number, (fetcher: typeof fetch) => Promise<unknown>, string][] = [
+    [65 * 1024, (fetcher) => requestDashboardSession(new URL("https://backend.example/session"),
+      "session-token", fetcher), "BACKEND_RESPONSE_INVALID"],
+    [129 * 1024, (fetcher) => requestDashboardRepositories(new URL("https://backend.example/repositories"),
+      "repository-token", fetcher), "BACKEND_RESPONSE_INVALID"],
+    [193 * 1024, (fetcher) => requestDashboardReviews(new URL("https://backend.example/reviews"),
+      "review-token", fetcher), "BACKEND_RESPONSE_INVALID"],
+    [33 * 1024, (fetcher) => requestDashboardUsage(new URL("https://backend.example/usage"),
+      "usage-token", fetcher), "BACKEND_RESPONSE_INVALID"],
+  ];
+
+  for (const [size, invoke, kind] of clients) {
+    let cancelled = false;
+    const response = new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new Uint8Array(size)); },
+      cancel() { cancelled = true; },
+    }), { status: 200 });
+    await assert.rejects(invoke(async () => response),
+      (error: DashboardSessionError | DashboardRepositoryError | DashboardReviewError | DashboardUsageError) =>
+        error.kind === kind);
+    assert.equal(cancelled, true);
+  }
 });

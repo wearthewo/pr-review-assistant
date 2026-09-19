@@ -2,7 +2,7 @@
 
 ## Current state
 
-The backend is complete through M15. M13F adds real read-only current-period quota usage to the Node.js 24 LTS / Next.js 16.3.5 dashboard. It contains no review detail/retry, repository mutation, settings feature, quota mutation, organization ownership flow, billing, CI/CD workflow, or deployment definition.
+The backend is complete through M15. M13G closes integration and browser security testing for the Node.js 24 LTS / Next.js 16.3.5 read-only dashboard. It contains no review detail/retry, repository mutation, settings feature, quota mutation, organization ownership flow, billing, CI/CD workflow, or deployment definition.
 
 ## Prerequisites
 
@@ -53,13 +53,15 @@ npm ci
 npm run dev
 ```
 
-Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` before claiming frontend completion. `BACKEND_BASE_URL` is server-only; development/test default to `http://127.0.0.1:8080`, while production requires an explicit HTTPS origin. Configure Auth0 using the server-only variables in `.env.example`; generate `AUTH0_SECRET` with 32 random bytes encoded as 64 hexadecimal characters. No auth or product secret may use `NEXT_PUBLIC_*`.
+Run `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, and `npm run test:e2e` before claiming dashboard completion. The E2E command uses pinned Chromium at desktop and mobile viewports, fixed local ports, locator-based waits, and failure-only traces/screenshots. It needs no real Auth0, GitHub, OpenAI, or customer data. `BACKEND_BASE_URL` is server-only; development/test default to `http://127.0.0.1:8080`, while production requires an explicit HTTPS origin. Configure Auth0 using the server-only variables in `.env.example`; generate `AUTH0_SECRET` with 32 random bytes encoded as 64 hexadecimal characters. No auth or product secret may use `NEXT_PUBLIC_*`.
 
 Production CSP uses a fresh request nonce and permits neither `unsafe-inline` nor `unsafe-eval`. Development permits `unsafe-eval` only for Next.js tooling. The same proxy dispatches the restricted Auth0 routes, rejects non-fixed login return targets, and preserves the M13A headers. `/dashboard` uses the server session to call Spring; tokens must stay in server-only modules.
 
 The backend requires `DASHBOARD_AUTH_ISSUER`, `DASHBOARD_AUTH_AUDIENCE`, and `DASHBOARD_AUTH_JWK_SET_URI`. The issuer and JWK URI must be same-origin HTTPS (loopback HTTP is test/local only). Keep the configured audience identical to `AUTH0_AUDIENCE`. Blank auth configuration leaves dashboard requests closed; partial configuration prevents startup. The browser must not call Spring directly and no CORS allowance is needed.
 
 For local dashboard checks, `/dashboard` renders sign-in when no session exists. An authenticated membership-less user gets the closed GitHub-connection onboarding state. Real memberships render the Overview shell. Multiple memberships may be selected with the native workspace form; the resulting `tenant` query value is matched against the fresh authenticated DTO on the server and is never stored in browser storage or treated as authorization. `/dashboard/repositories`, `/dashboard/reviews`, and `/dashboard/usage` make separate server-only calls to protected endpoints that repeat membership authorization. Reviews uses bounded keyset navigation. Usage obtains the current UTC period and configured quota from Spring; it does not calculate accounting boundaries locally. None of these pages calls GitHub or an AI provider. Settings remains disabled.
+
+The E2E fixture server is test-only and imports the real presentation components with synthetic bounded DTOs. It does not emulate Spring authority and is never shipped by Next.js. Real authorization composition is covered separately by the Spring/PostgreSQL cross-feature integration test; real-provider login and installation smoke testing requires a controlled deployed Auth0/GitHub environment and remains deferred.
 
 For M13D1, register the exact `${APP_BASE_URL}/github/callback` URL on the existing GitHub App and configure `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, and `GITHUB_OAUTH_CALLBACK_URL`. The client ID differs from `GITHUB_APP_ID`. Production callback and OAuth origins require HTTPS; local loopback HTTP is accepted for development. Never bootstrap with email/domain matching or a submitted tenant, installation, repository, organization, username, or role. The setup URL may point to `/github/setup`, but its `installation_id` is deliberately ignored.
 

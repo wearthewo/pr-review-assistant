@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. M13F adds real, read-only tenant quota usage over the existing M15 ledger; review details, settings, billing, and repository mutation remain unimplemented.
+> Project status: **pre-alpha**. M13G closes the integrated read-only dashboard phase with cross-feature PostgreSQL coverage and desktop/mobile browser security tests; review details, settings, billing, and repository mutation remain unimplemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -103,6 +103,8 @@ M13E makes Reviews a second read-only tenant-resource page. A history entry is o
 The state mapping is deliberately conservative: `READY` becomes `QUEUED`, `PROCESSING` becomes `ANALYZING`, job `FAILED` becomes `ANALYSIS_FAILED`, and job `COMPLETED` without a publication becomes `COMPLETED_WITHOUT_PUBLICATION`. Publication state takes precedence: `PENDING`, `AMBIGUOUS`, `PUBLISHED`, and `FAILED` become `PUBLICATION_PENDING`, `PUBLICATION_UNCERTAIN`, `PUBLISHED`, and `PUBLICATION_FAILED`. Absence of a publication cannot prove zero findings, so the dashboard never labels that state as zero findings.
 
 M13F makes Usage a third read-only tenant-resource page. `GET /api/dashboard/tenants/{tenantId}/usage` independently reauthorizes membership, reuses M15's configured quota policy and exact UTC month calculation, and performs one aggregate count over `REVIEW_ANALYSIS` events in the half-open period. `RESERVED` and `CONSUMED` occupy quota; `RELEASED` does not. The response contains only period boundaries, limit, used, and nonnegative remaining units. It exposes no accounting rows, tokens, provider metadata, plans, or prices and performs no GitHub, OpenAI, quota-lock, or accounting-mutation operation.
+
+M13G verifies those pieces as one boundary. Overview, Repositories, Reviews, and Usage preserve the selected authorized workspace in server-rendered navigation, while every Spring resource endpoint still independently derives authorization from the verified JWT and durable membership. All dashboard response readers enforce byte ceilings incrementally, including chunked responses without `Content-Length`. Playwright exercises production-like CSP/headers and deterministic desktop/mobile user states without a production authentication bypass; real Auth0 and GitHub provider smoke tests remain deployment work.
 
 The initial operator policy is confidence 85, minimum severity MEDIUM, and at most three publication candidates. Silence is better than a weak comment; zero accepted findings completes without a GitHub write.
 
