@@ -32,7 +32,8 @@ class UsageAccountingServiceTest {
 
         assertThat(service.reserve(tenant, jobId)).isEqualTo(acquired);
         assertThat(service.quota(tenant)).isEqualTo(available);
+        assertThat(service.quota(tenant.tenantId())).isEqualTo(available);
         verify(store).reserve(tenant, jobId, october, policy, now);
-        verify(store).quota(tenant.tenantId(), october, policy);
+        verify(store, org.mockito.Mockito.times(2)).quota(tenant.tenantId(), october, policy);
     }
 }

@@ -10,6 +10,7 @@ import { DashboardView } from "@/components/dashboard-view";
 import { DisplayText } from "@/components/display-text";
 import { RepositoriesView, RepositoryList } from "@/components/repositories-view";
 import { ReviewHistory, ReviewsView } from "@/components/reviews-view";
+import { UsagePanel, UsageView } from "@/components/usage-view";
 import { resolveAuthEnvironment } from "@/lib/auth-environment-validation";
 import { resolveBackendOrigin } from "@/lib/backend-origin-validation";
 import {
@@ -28,6 +29,12 @@ import {
   requestDashboardReviews,
   type DashboardReview,
 } from "@/lib/dashboard-reviews-core";
+import {
+  DashboardUsageError,
+  requestDashboardUsage,
+  usagePercentage,
+  type ReviewAnalysisUsage,
+} from "@/lib/dashboard-usage-core";
 import {
   connectionMessage,
   dashboardPathForConnectionResult,
@@ -289,14 +296,15 @@ test("overview renders no fabricated repository review or usage metrics", () => 
   assert.match(html, /no fabricated repository, review, or usage totals/);
 });
 
-test("repository navigation is functional while later sections remain deferred", () => {
+test("implemented dashboard navigation is functional while settings remains deferred", () => {
   const html = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
     applicationUserId: USER_ID, memberships: [{ tenantId: TENANT_ID, role: "MEMBER" }],
     onboardingRequired: false }} />);
   assert.match(html, /aria-current="page"[^>]*>Overview/);
   assert.match(html, /href="\/dashboard\/repositories"[^>]*>Repositories/);
   assert.match(html, /href="\/dashboard\/reviews"[^>]*>Reviews/);
-  assert.doesNotMatch(html, /href="\/dashboard\/(?:usage|settings)"/);
+  assert.match(html, /href="\/dashboard\/usage"[^>]*>Usage/);
+  assert.doesNotMatch(html, /href="\/dashboard\/settings"/);
 });
 
 test("repositories route gates unauthenticated and unbound users without repository data", () => {
@@ -323,7 +331,7 @@ test("authorized repository DTO renders truthfully with active navigation and no
   assert.match(html, /MEMBER/);
   assert.doesNotMatch(html, /Enabled|Active|review count|findings|health|score|monthly usage|AI spend/i);
   assert.match(html, /href="\/dashboard\/reviews"[^>]*>Reviews/);
-  assert.match(html, /aria-disabled="true">Usage/);
+  assert.match(html, /href="\/dashboard\/usage"[^>]*>Usage/);
   assert.match(html, /aria-disabled="true">Settings/);
 });
 
@@ -370,8 +378,120 @@ test("authorized review history renders exact revisions and controlled truthful 
   assert.doesNotMatch(html, /zero findings|review summary|Failure:|Provider:|Model:|token usage/i);
   assert.doesNotMatch(html, /PR title|author|avatar|repository name|branch/i);
   assert.ok(html.indexOf("Pull request #42") < html.indexOf("Pull request #41"));
-  assert.match(html, /aria-disabled="true">Usage/);
+  assert.match(html, /href="\/dashboard\/usage"[^>]*>Usage/);
   assert.match(html, /aria-disabled="true">Settings/);
+});
+
+test("usage route gates unauthenticated and unbound users without quota data", () => {
+  const unauthenticated = renderToStaticMarkup(<UsageView state={{ status: "gate",
+    dashboard: { status: "unauthenticated" } }} />);
+  const unbound = renderToStaticMarkup(<UsageView state={{ status: "gate", dashboard: {
+    status: "authenticated", applicationUserId: USER_ID, memberships: [], onboardingRequired: true,
+  } }} />);
+  assert.match(unauthenticated, /Sign in to your dashboard/);
+  assert.match(unbound, /Connect your GitHub workspace next/);
+  assert.doesNotMatch(`${unauthenticated}${unbound}`, /quota units used|remaining/);
+});
+
+test("authorized usage renders real quota semantics UTC period and active navigation", () => {
+  const html = renderToStaticMarkup(<UsageView state={{ status: "ready", selectedTenantId: TENANT_ID,
+    dashboard: { status: "authenticated", applicationUserId: USER_ID,
+      memberships: [{ tenantId: TENANT_ID, role: "MEMBER" }], onboardingRequired: false },
+    usage: { reviewAnalysis: usage({ used: 31, remaining: 19 }) },
+  }} />);
+  assert.match(html, /aria-current="page"[^>]*>Usage/);
+  assert.match(html, /31<\/strong> of <strong>50/);
+  assert.match(html, /review-analysis quota units used/);
+  assert.match(html, /62% of the current quota/);
+  assert.match(html, /19 remaining/);
+  assert.match(html, /Sep 1, 2026.*Oct 1, 2026 UTC/);
+  assert.match(html, /UTC, start inclusive and end exclusive/);
+  assert.match(html, /reserved and consumed/i);
+  assert.match(html, /Released reservations do not count/);
+  assert.match(html, /href="\/dashboard\/repositories"[^>]*>Repositories/);
+  assert.match(html, /href="\/dashboard\/reviews"[^>]*>Reviews/);
+  assert.match(html, /aria-disabled="true">Settings/);
+  assert.doesNotMatch(html, /completed reviews|Free plan|pricing|upgrade|Stripe|\$\d|tokens used/i);
+});
+
+test("usage progress safely represents zero exhausted and over-limit states", () => {
+  const zero = renderToStaticMarkup(<UsagePanel usage={usage({ used: 0, remaining: 50 })} />);
+  const exhausted = renderToStaticMarkup(<UsagePanel usage={usage({ used: 50, remaining: 0 })} />);
+  const over = renderToStaticMarkup(<UsagePanel usage={usage({ used: 57, remaining: 0 })} />);
+  assert.match(zero, /value="0" max="50"/);
+  assert.match(zero, /0% of the current quota/);
+  assert.match(exhausted, /value="50" max="50"/);
+  assert.match(exhausted, /Quota exhausted/);
+  assert.match(over, /57<\/strong> of <strong>50/);
+  assert.match(over, /value="50" max="50"/);
+  assert.match(over, /100% of the current quota/);
+  assert.equal(usagePercentage(usage({ limit: 0, used: 0, remaining: 0 })), 0);
+});
+
+test("invalid usage selection and authorization failure fail closed", () => {
+  const dashboard = { status: "authenticated" as const, applicationUserId: USER_ID,
+    memberships: [{ tenantId: TENANT_ID, role: "OWNER" as const }], onboardingRequired: false };
+  const invalid = renderToStaticMarkup(<UsageView state={{ status: "invalid-tenant", dashboard }} />);
+  const denied = renderToStaticMarkup(<UsageView state={{ status: "usage-error", dashboard,
+    selectedTenantId: TENANT_ID, kind: "AUTHORIZATION_FAILED" }} />);
+  assert.match(invalid, /That workspace cannot be opened/);
+  assert.match(denied, /could not be authorized/);
+  assert.doesNotMatch(`${invalid}${denied}`, /quota units used|\d+ remaining/);
+});
+
+test("usage client keeps bearer token server-side and allowlists DTO fields", async () => {
+  const secretToken = "usage-server-token";
+  let authorization = "";
+  const result = await requestDashboardUsage(new URL("https://backend.example/usage"), secretToken,
+    async (_input, init) => {
+      authorization = new Headers(init?.headers).get("Authorization") ?? "";
+      return new Response(JSON.stringify({ reviewAnalysis: { ...usage({ used: 2, remaining: 48 }),
+        provider: "secret-provider", tokenUsage: 123 }, tenantId: TENANT_ID }), { status: 200 });
+    });
+  assert.equal(authorization, `Bearer ${secretToken}`);
+  assert.deepEqual(Object.keys(result.reviewAnalysis).sort(),
+    ["periodStart", "periodEnd", "limit", "used", "remaining"].sort());
+  const html = renderToStaticMarkup(<UsagePanel usage={result.reviewAnalysis} />);
+  assert.doesNotMatch(html, /secret-provider|tokenUsage|usage-server-token|tenantId/);
+});
+
+test("usage client rejects malformed oversized and impossible quota responses", async () => {
+  const url = new URL("https://backend.example/usage");
+  const token = "never-expose-usage-token";
+  const invalidBodies = [
+    "not-json",
+    JSON.stringify({ reviewAnalysis: usage({ used: -1, remaining: 50 }) }),
+    JSON.stringify({ reviewAnalysis: usage({ limit: Number.MAX_SAFE_INTEGER + 1 }) }),
+    JSON.stringify({ reviewAnalysis: usage({ periodStart: "not-a-date" }) }),
+    JSON.stringify({ reviewAnalysis: usage({ periodEnd: "2026-09-01T00:00:00Z" }) }),
+    JSON.stringify({ reviewAnalysis: usage({ used: 31, remaining: 20 }) }),
+  ];
+  for (const body of invalidBodies) {
+    await assert.rejects(requestDashboardUsage(url, token,
+      async () => new Response(body, { status: 200 })),
+    (error: DashboardUsageError) => error.kind === "BACKEND_RESPONSE_INVALID"
+      && !error.toString().includes(token));
+  }
+  await assert.rejects(requestDashboardUsage(url, token, async () => new Response("x", {
+    status: 200, headers: { "Content-Length": String(33 * 1024) },
+  })), (error: DashboardUsageError) => error.kind === "BACKEND_RESPONSE_INVALID");
+  await assert.rejects(requestDashboardUsage(url, token,
+    async () => new Response("x".repeat(33 * 1024), { status: 200 })),
+  (error: DashboardUsageError) => error.kind === "BACKEND_RESPONSE_INVALID");
+});
+
+test("usage timeout unavailable and authorization responses are safely classified", async () => {
+  const url = new URL("https://backend.example/usage");
+  const token = "usage-secret";
+  const cases: readonly [() => Promise<Response>, string][] = [
+    [async () => { throw new DOMException("timed out", "TimeoutError"); }, "BACKEND_TIMEOUT"],
+    [async () => new Response("failure", { status: 500 }), "BACKEND_UNAVAILABLE"],
+    [async () => new Response("denied", { status: 404 }), "AUTHORIZATION_FAILED"],
+  ];
+  for (const [fetcher, kind] of cases) {
+    await assert.rejects(requestDashboardUsage(url, token, fetcher),
+      (error: DashboardUsageError) => error.kind === kind && !error.toString().includes(token));
+  }
 });
 
 test("review empty state and keyset continuation are explicit", () => {
@@ -565,10 +685,13 @@ test("server-only boundaries and Auth0 session protections are configured", () =
   const backendBoundary = readFileSync(join(frontendRoot, "src/lib/server/backend-api.ts"), "utf8");
   const authBoundary = readFileSync(join(frontendRoot, "src/lib/server/auth0.ts"), "utf8");
   const reviewsBoundary = readFileSync(join(frontendRoot, "src/lib/server/dashboard-reviews.ts"), "utf8");
+  const usageBoundary = readFileSync(join(frontendRoot, "src/lib/server/dashboard-usage.ts"), "utf8");
   assert.match(backendBoundary, /import "server-only"/);
   assert.match(authBoundary, /import "server-only"/);
   assert.match(reviewsBoundary, /import "server-only"/);
+  assert.match(usageBoundary, /import "server-only"/);
   assert.doesNotMatch(reviewsBoundary, /"use client"|window\.|document\./);
+  assert.doesNotMatch(usageBoundary, /"use client"|window\.|document\./);
   assert.match(authBoundary, /enableAccessTokenEndpoint: false/);
   assert.match(authBoundary, /signInReturnToPath: "\/dashboard"/);
   assert.match(authBoundary, /sameSite: "lax"/);
@@ -585,6 +708,8 @@ test("production source has no browser token storage, raw HTML, or public secret
     "src/components/repositories-view.tsx", "src/app/dashboard/repositories/page.tsx",
     "src/lib/dashboard-reviews-core.ts", "src/lib/server/dashboard-reviews.ts",
     "src/components/reviews-view.tsx", "src/app/dashboard/reviews/page.tsx",
+    "src/lib/dashboard-usage-core.ts", "src/lib/server/dashboard-usage.ts",
+    "src/components/usage-view.tsx", "src/app/dashboard/usage/page.tsx",
     "src/lib/server/github-connection.ts", "src/app/github/connect/route.ts",
     "src/app/github/callback/route.ts", "src/app/github/setup/route.ts"];
   const source = files.map((file) => readFileSync(join(frontendRoot, file), "utf8")).join("\n");
@@ -603,6 +728,17 @@ function review(overrides: Partial<DashboardReview>): DashboardReview {
     publishableFindingCount: null,
     createdAt: "2026-09-16T12:00:00Z",
     updatedAt: "2026-09-16T12:00:01Z",
+    ...overrides,
+  };
+}
+
+function usage(overrides: Partial<ReviewAnalysisUsage>): ReviewAnalysisUsage {
+  return {
+    periodStart: "2026-09-01T00:00:00Z",
+    periodEnd: "2026-10-01T00:00:00Z",
+    limit: 50,
+    used: 0,
+    remaining: 50,
     ...overrides,
   };
 }

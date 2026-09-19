@@ -25,6 +25,17 @@ class UsageModelsTest {
     }
 
     @Test
+    void utcCalendarMonthHandlesYearAndFebruaryBoundaries() {
+        UsagePeriod december = UsagePeriod.utcMonthContaining(Instant.parse("2026-12-31T23:59:59.999Z"));
+        UsagePeriod february = UsagePeriod.utcMonthContaining(Instant.parse("2028-02-29T12:00:00Z"));
+
+        assertThat(december.start()).isEqualTo(Instant.parse("2026-12-01T00:00:00Z"));
+        assertThat(december.end()).isEqualTo(Instant.parse("2027-01-01T00:00:00Z"));
+        assertThat(february.start()).isEqualTo(Instant.parse("2028-02-01T00:00:00Z"));
+        assertThat(february.end()).isEqualTo(Instant.parse("2028-03-01T00:00:00Z"));
+    }
+
+    @Test
     void quotaPolicyReportsUsedRemainingAndHardBounds() {
         UsagePeriod period = UsagePeriod.utcMonthContaining(Instant.EPOCH);
         QuotaPolicy policy = new QuotaPolicy(3);

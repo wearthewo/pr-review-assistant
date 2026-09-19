@@ -2,7 +2,7 @@
 
 ## Current state
 
-The backend is complete through M15. M13E adds real read-only review history to the Node.js 24 LTS / Next.js 16.3.5 dashboard. It contains no review detail/retry, repository mutation, usage/settings feature, organization ownership flow, billing, CI/CD workflow, or deployment definition.
+The backend is complete through M15. M13F adds real read-only current-period quota usage to the Node.js 24 LTS / Next.js 16.3.5 dashboard. It contains no review detail/retry, repository mutation, settings feature, quota mutation, organization ownership flow, billing, CI/CD workflow, or deployment definition.
 
 ## Prerequisites
 
@@ -59,7 +59,7 @@ Production CSP uses a fresh request nonce and permits neither `unsafe-inline` no
 
 The backend requires `DASHBOARD_AUTH_ISSUER`, `DASHBOARD_AUTH_AUDIENCE`, and `DASHBOARD_AUTH_JWK_SET_URI`. The issuer and JWK URI must be same-origin HTTPS (loopback HTTP is test/local only). Keep the configured audience identical to `AUTH0_AUDIENCE`. Blank auth configuration leaves dashboard requests closed; partial configuration prevents startup. The browser must not call Spring directly and no CORS allowance is needed.
 
-For local dashboard checks, `/dashboard` renders sign-in when no session exists. An authenticated membership-less user gets the closed GitHub-connection onboarding state. Real memberships render the Overview shell. Multiple memberships may be selected with the native workspace form; the resulting `tenant` query value is matched against the fresh authenticated DTO on the server and is never stored in browser storage or treated as authorization. `/dashboard/repositories` and `/dashboard/reviews` make separate server-only calls to protected endpoints that repeat membership authorization. Reviews uses bounded keyset navigation with `cursor`; duplicate, malformed, overlong, or cross-tenant cursors fail closed. Neither page calls GitHub or an AI provider. Usage and Settings remain disabled labels.
+For local dashboard checks, `/dashboard` renders sign-in when no session exists. An authenticated membership-less user gets the closed GitHub-connection onboarding state. Real memberships render the Overview shell. Multiple memberships may be selected with the native workspace form; the resulting `tenant` query value is matched against the fresh authenticated DTO on the server and is never stored in browser storage or treated as authorization. `/dashboard/repositories`, `/dashboard/reviews`, and `/dashboard/usage` make separate server-only calls to protected endpoints that repeat membership authorization. Reviews uses bounded keyset navigation. Usage obtains the current UTC period and configured quota from Spring; it does not calculate accounting boundaries locally. None of these pages calls GitHub or an AI provider. Settings remains disabled.
 
 For M13D1, register the exact `${APP_BASE_URL}/github/callback` URL on the existing GitHub App and configure `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, and `GITHUB_OAUTH_CALLBACK_URL`. The client ID differs from `GITHUB_APP_ID`. Production callback and OAuth origins require HTTPS; local loopback HTTP is accepted for development. Never bootstrap with email/domain matching or a submitted tenant, installation, repository, organization, username, or role. The setup URL may point to `/github/setup`, but its `installation_id` is deliberately ignored.
 

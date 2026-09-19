@@ -57,9 +57,16 @@ public final class UsageAccountingService {
         if (tenantContext == null) {
             throw new IllegalArgumentException("tenantContext is required");
         }
+        return quota(tenantContext.tenantId());
+    }
+
+    public QuotaDecision quota(UUID tenantId) {
+        if (tenantId == null) {
+            throw new IllegalArgumentException("tenantId is required");
+        }
         Instant now = clock.instant();
         try {
-            return store.quota(tenantContext.tenantId(), UsagePeriod.utcMonthContaining(now), quotaPolicy);
+            return store.quota(tenantId, UsagePeriod.utcMonthContaining(now), quotaPolicy);
         } catch (DataAccessException exception) {
             throw new UsageAccountingException(UsageAccountingError.USAGE_ACCOUNTING_FAILED);
         }
