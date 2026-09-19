@@ -1,4 +1,5 @@
 import { DashboardSessionError } from "@/lib/dashboard-session-core";
+import { readBoundedResponseBody } from "@/lib/bounded-response";
 
 const MAX_RESPONSE_BYTES = 128 * 1024;
 const MAX_REPOSITORIES = 100;
@@ -56,14 +57,8 @@ export async function requestDashboardRepositories(
   }
   if (!response.ok) throw new DashboardRepositoryError("BACKEND_UNAVAILABLE");
 
-  const declaredLength = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
-    throw new DashboardRepositoryError("BACKEND_RESPONSE_INVALID");
-  }
-  const body = await response.text();
-  if (new TextEncoder().encode(body).byteLength > MAX_RESPONSE_BYTES) {
-    throw new DashboardRepositoryError("BACKEND_RESPONSE_INVALID");
-  }
+  const body = await readBoundedResponseBody(response, MAX_RESPONSE_BYTES,
+    () => new DashboardRepositoryError("BACKEND_RESPONSE_INVALID"));
   let value: unknown;
   try {
     value = JSON.parse(body);

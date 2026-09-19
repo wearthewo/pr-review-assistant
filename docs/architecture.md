@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M15. M13F adds bounded read-only current-period quota usage over the M15 ledger; review detail, repository mutation, billing, and later dashboard product operations remain absent.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M15. M13G closes the integrated read-only dashboard phase over the existing M13/M14/M15 boundaries; review detail, repository mutation, billing, and later dashboard product operations remain absent.
 
 ## System context
 
@@ -100,6 +100,8 @@ The Next.js 16 App Router defaults to Server Components. Auth0 Universal Login o
 The browser is never a tenant authority. A verified `(issuer, subject)` resolves to an application user, then a membership, then an authorized tenant. M13D1 can create the first membership only from server-verified personal GitHub installation ownership; browser/setup identifiers remain untrusted hints and are ignored by the implemented flow. GitHub, OpenAI, auth client, webhook, and database secrets never enter `NEXT_PUBLIC_*` configuration or Client Components.
 
 The request boundary generates a fresh CSP nonce and attaches strict production headers. React text escaping remains the display baseline. `/dashboard` is a Server Component that obtains the bounded session DTO, renders unauthenticated/unbound/error states, and selects a workspace only from returned memberships. An optional tenant query identifies a preference but never authorizes it; an unmatched value fails closed. Overview and the read-only Repositories, Reviews, and Usage sections are functional; settings, billing, and observability remain future scope.
+
+Dashboard navigation preserves the exact selected member workspace as an identifier across those four routes. Each destination revalidates selection against the fresh session DTO and each Spring resource endpoint independently authorizes membership, so the URL never becomes authority. Server-only clients share an incremental byte-counting response boundary; no dashboard response is fully buffered before its operation-specific ceiling is enforced.
 
 The Usage page calls one protected Spring endpoint after session resolution. Spring independently resolves the application user and membership, then delegates to M15's quota service. That service derives the half-open UTC month from the injected `Clock`, applies the configured global quota, and issues one tenant/type/period aggregate. Dashboard reads do not take the reservation advisory lock because they neither decide nor mutate quota. The frontend treats the bounded DTO as untrusted, keeps the bearer token server-only, and uses a native accessible progress element capped visually at the limit while preserving truthful over-limit numbers.
 

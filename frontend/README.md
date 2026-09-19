@@ -1,6 +1,6 @@
 # Frontend
 
-This directory contains the authenticated dashboard foundation, the M13D1 server-only GitHub connection routes, the M13D2 repository page, M13E review history, and the M13F read-only quota-usage page. Auth0 remains the SaaS identity provider; GitHub authorization is temporary ownership proof. Repository mutation, review details, billing, settings, quota mutation, and tenant management remain absent.
+This directory contains the integrated authenticated dashboard: server-only GitHub connection routes plus read-only Overview, Repositories, Reviews, and Usage pages. M13G adds browser-level security/integration coverage. Auth0 remains the SaaS identity provider; GitHub authorization is temporary ownership proof. Repository mutation, review details, billing, settings, quota mutation, and tenant management remain absent.
 
 ## Toolchain
 
@@ -10,6 +10,7 @@ This directory contains the authenticated dashboard foundation, the M13D1 server
 - React and React DOM 19.3.0
 - TypeScript 5.9.3
 - ESLint 9.39.5 with the Next.js 16.3.5 configuration
+- Playwright 1.63.0 as a development-only Chromium E2E runner
 
 Use the committed `package-lock.json`; do not replace exact versions casually.
 
@@ -31,6 +32,7 @@ npm run lint
 npm run typecheck
 npm test
 npm run build
+npm run test:e2e
 npm audit --omit=dev
 ```
 
@@ -44,6 +46,10 @@ The browser is not a tenant authority. An unbound authenticated user submits a s
 
 The frontend introduces no CORS path: the browser talks to Next.js, and Next.js talks to Spring. M13C may receive `?tenant=<uuid>` to identify a preferred workspace, but its Server Component selects only an exact member of the authenticated backend response. It chooses the lexicographically first authorized tenant when no preference exists and fails closed for unknown, malformed, or duplicated values. The query parameter never grants authorization and is not browser-persisted.
 
-The desktop shell uses a sidebar and the mobile shell uses native `details`/`summary` navigation. Overview, Repositories, Reviews, and Usage are active; Settings remains visibly disabled. The resource pages are Server Components: they resolve authenticated membership, retain the bearer token exclusively server-side, and validate bounded Spring DTOs before rendering. `/dashboard/usage` shows the backend-provided UTC period, limit, quota units used, and remaining units. It never calculates an accounting month from the browser clock or presents reserved usage as completed work. Ordinary rendering makes no browser-to-Spring, GitHub, OpenAI, worker, advisory-lock, or mutation call.
+The desktop shell uses a sidebar and the mobile shell uses native `details`/`summary` navigation. Overview, Repositories, Reviews, and Usage are active; Settings remains visibly disabled. Navigation carries only the currently selected authorized workspace identifier so a legitimate multi-tenant selection remains consistent across pages; each page and Spring endpoint reauthorize it. The resource pages are Server Components: they resolve authenticated membership, retain the bearer token exclusively server-side, and validate bounded Spring DTOs before rendering. `/dashboard/usage` shows the backend-provided UTC period, limit, quota units used, and remaining units. It never calculates an accounting month from the browser clock or presents reserved usage as completed work. Ordinary rendering makes no browser-to-Spring, GitHub, OpenAI, worker, advisory-lock, or mutation call.
 
 Review pagination uses ordinary GET navigation with a tenant identifier and bounded opaque cursor. The tenant is checked first against the authenticated membership DTO and Spring independently reauthorizes it; the cursor only identifies a keyset boundary. Timeout, unavailable, authorization, malformed/oversized-response, malformed-cursor, empty, unbound, and invalid-selection states use bounded messages without backend bodies or foreign-resource disclosure. Extra DTO fields are discarded and React text escaping remains the display boundary.
+
+All four server-side dashboard clients use a shared streaming response reader. It checks declared lengths, counts each received byte chunk, cancels an over-limit stream, and decodes only a bounded complete UTF-8 body. Current ceilings are 64 KiB for session, 128 KiB for repositories, 192 KiB for reviews, and 32 KiB for usage.
+
+`npm run test:e2e` builds and starts the real Next.js application on a fixed local port and runs Chromium at desktop and Pixel 7 viewports. Real unauthenticated routes, CSP, security headers, and CSRF behavior are exercised directly. Authenticated presentation states use a separate test-only rendering process built from the production components; it has no production route, flag, or auth bypass. Spring membership and tenant-resource enforcement are exercised by the backend PostgreSQL integration suite. A real Auth0/GitHub smoke test is intentionally deferred to the deployment/provider phase.

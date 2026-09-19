@@ -1,3 +1,5 @@
+import { readBoundedResponseBody } from "@/lib/bounded-response";
+
 const MAX_RESPONSE_BYTES = 64 * 1024;
 const MAX_MEMBERSHIPS = 100;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -102,14 +104,8 @@ export async function requestDashboardSession(
   if (!response.ok) {
     throw new DashboardSessionError("BACKEND_UNAVAILABLE");
   }
-  const declaredLength = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
-    throw new DashboardSessionError("BACKEND_RESPONSE_INVALID");
-  }
-  const body = await response.text();
-  if (new TextEncoder().encode(body).byteLength > MAX_RESPONSE_BYTES) {
-    throw new DashboardSessionError("BACKEND_RESPONSE_INVALID");
-  }
+  const body = await readBoundedResponseBody(response, MAX_RESPONSE_BYTES,
+    () => new DashboardSessionError("BACKEND_RESPONSE_INVALID"));
 
   let value: unknown;
   try {

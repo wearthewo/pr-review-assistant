@@ -1,4 +1,5 @@
 import { DashboardSessionError } from "@/lib/dashboard-session-core";
+import { readBoundedResponseBody } from "@/lib/bounded-response";
 
 const MAX_RESPONSE_BYTES = 192 * 1024;
 const MAX_REVIEWS = 50;
@@ -82,14 +83,8 @@ export async function requestDashboardReviews(
   }
   if (!response.ok) throw new DashboardReviewError("BACKEND_UNAVAILABLE");
 
-  const declaredLength = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
-    throw new DashboardReviewError("BACKEND_RESPONSE_INVALID");
-  }
-  const body = await response.text();
-  if (new TextEncoder().encode(body).byteLength > MAX_RESPONSE_BYTES) {
-    throw new DashboardReviewError("BACKEND_RESPONSE_INVALID");
-  }
+  const body = await readBoundedResponseBody(response, MAX_RESPONSE_BYTES,
+    () => new DashboardReviewError("BACKEND_RESPONSE_INVALID"));
   try {
     return validateReviewPage(JSON.parse(body));
   } catch (error) {

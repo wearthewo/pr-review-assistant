@@ -12,7 +12,8 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/foundation.test.tsx"
+    "test": "tsx --test tests/foundation.test.tsx",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@auth0/nextjs-auth0": "4.29.0",
@@ -21,6 +22,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/node": "24.10.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

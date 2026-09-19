@@ -26,6 +26,8 @@ M13E PostgreSQL/Spring integration tests cover OWNER/MEMBER history reads, all s
 
 M13F PostgreSQL/Spring integration tests cover OWNER/MEMBER reads, non-enumerating cross-tenant and unowned denial, unauthenticated/malformed requests, zero usage, authoritative configured limit, `RESERVED`/`CONSUMED` inclusion, `RELEASED` exclusion, exact half-open UTC boundaries, over-limit clamping, allowlisted DTOs, and read-only behavior. Unit coverage proves authorization occurs before one quota-service read and exercises December-to-January and leap-February boundaries. Frontend tests cover gates, zero/partial/exhausted/over-limit rendering, accessible capped progress, strict numeric/date/period validation, response bounds, safe failures, server-only credentials, and the absence of plan, price, token, or cost claims.
 
+M13G adds one cross-feature Spring/PostgreSQL fixture spanning session, repositories, reviews, and usage for OWNER and MEMBER identities, plus cross-tenant attacks on all resource endpoints. Frontend regressions prove authorized workspace navigation continuity and incremental cancellation of chunked oversized responses. Playwright 1.63.0 runs nine scenarios on desktop Chromium and Pixel 7 (18 project executions): real unauthenticated Next.js routes, CSP/headers/CSRF, test-only deterministic unbound and authorized presentation states, workspace tampering, inert hostile input, and responsive accessibility/navigation. The fixture is a separate test process and introduces no production auth hook; real Auth0/GitHub smoke testing remains deferred.
+
 ## Test layers
 
 ### Unit tests

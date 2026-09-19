@@ -167,7 +167,7 @@ export function DashboardFrame({
     <div className="app-shell">
       <aside className="sidebar">
         <Brand />
-        <DashboardNavigation activeSection={activeSection} />
+        <DashboardNavigation activeSection={activeSection} tenantId={membership.tenantId} />
         <div className="sidebar-account">
           <span className="account-label">Current workspace</span>
           <strong>{tenantLabel(membership.tenantId)}</strong>
@@ -180,7 +180,7 @@ export function DashboardFrame({
           <Brand />
           <details className="mobile-navigation">
             <summary>Navigation</summary>
-            <DashboardNavigation activeSection={activeSection} />
+            <DashboardNavigation activeSection={activeSection} tenantId={membership.tenantId} />
           </details>
         </header>
         <main id="main-content" className="dashboard-main">
@@ -226,16 +226,20 @@ export function TenantSelector({
   );
 }
 
-function DashboardNavigation({ activeSection }: Readonly<{ activeSection: DashboardSection }>) {
+function DashboardNavigation({ activeSection, tenantId }: Readonly<{
+  activeSection: DashboardSection;
+  tenantId: string;
+}>) {
   return (
     <nav className="dashboard-navigation" aria-label="Primary">
       <ul>
-        <li><Link href="/dashboard" aria-current={activeSection === "Overview" ? "page" : undefined}>Overview</Link></li>
-        <li><Link href="/dashboard/repositories"
+        <li><Link href={dashboardHref("/dashboard", tenantId)}
+          aria-current={activeSection === "Overview" ? "page" : undefined}>Overview</Link></li>
+        <li><Link href={dashboardHref("/dashboard/repositories", tenantId)}
           aria-current={activeSection === "Repositories" ? "page" : undefined}>Repositories</Link></li>
-        <li><Link href="/dashboard/reviews"
+        <li><Link href={dashboardHref("/dashboard/reviews", tenantId)}
           aria-current={activeSection === "Reviews" ? "page" : undefined}>Reviews</Link></li>
-        <li><Link href="/dashboard/usage"
+        <li><Link href={dashboardHref("/dashboard/usage", tenantId)}
           aria-current={activeSection === "Usage" ? "page" : undefined}>Usage</Link></li>
         {navigation.filter((item) => !["Overview", "Repositories", "Reviews", "Usage"].includes(item)).map((item) => (
           <li key={item}><span aria-disabled="true">{item}<small>Deferred</small></span></li>
@@ -243,6 +247,10 @@ function DashboardNavigation({ activeSection }: Readonly<{ activeSection: Dashbo
       </ul>
     </nav>
   );
+}
+
+function dashboardHref(path: string, tenantId: string): string {
+  return `${path}?${new URLSearchParams({ tenant: tenantId }).toString()}`;
 }
 
 function InvalidTenantState() {
