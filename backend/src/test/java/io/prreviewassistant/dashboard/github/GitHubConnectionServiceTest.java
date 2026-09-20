@@ -131,7 +131,7 @@ class GitHubConnectionServiceTest {
     private static GitHubConnectionProperties properties() {
         return new GitHubConnectionProperties("client-id", "client-secret",
                 URI.create("https://app.example/github/callback"), URI.create("https://github.com"),
-                Duration.ofMinutes(10), 10, 1000, 262144);
+                Duration.ofMinutes(10), 5, 10, 1000, 262144);
     }
 
     private static final class MemoryStateStore implements GitHubConnectionStateStore {
@@ -141,7 +141,8 @@ class GitHubConnectionServiceTest {
         private Instant expiresAt;
         private String rawState;
 
-        @Override public void create(String hash, UUID userId, String verifier, Instant expiresAt, Instant now) {
+        @Override public void create(String hash, UUID userId, String verifier, Instant expiresAt, Instant now,
+                int maxActiveStatesPerUser) {
             this.hash = hash; this.userId = userId; this.verifier = verifier; this.expiresAt = expiresAt;
         }
         void allow(String raw, UUID user, String value) {

@@ -4,7 +4,7 @@
 
 The system processes private source code and acts through GitHub installation permissions in a multi-tenant environment. It therefore assumes that inbound content, external services, model output, and tenant users can fail or be malicious. Controls use least privilege, explicit tenant context, bounded processing, defense in depth, and auditable state transitions.
 
-This document defines required controls. Concrete libraries, schemas, thresholds, key-management products, and hosting controls are deferred until implementation and deployment decisions exist.
+This document defines required controls. Concrete libraries, schemas, thresholds, key-management products, and hosting controls are deferred until implementation and deployment decisions exist. M17's implementation-specific attack matrix, fix list, limit inventory, and regression map are in [security-hardening.md](security-hardening.md).
 
 ## Identity, authentication, and tenant isolation
 

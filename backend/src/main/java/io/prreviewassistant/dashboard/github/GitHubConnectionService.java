@@ -66,7 +66,8 @@ public class GitHubConnectionService {
         ApplicationUser user = identities.provisionUser(Objects.requireNonNull(identity), now);
         String state = randomValue(32);
         String verifier = randomValue(64);
-        states.create(hash(state), user.id(), verifier, now.plus(properties.stateTtl()), now);
+        states.create(hash(state), user.id(), verifier, now.plus(properties.stateTtl()), now,
+                properties.maxActiveStatesPerUser());
         String challenge = base64Url(digest(verifier.getBytes(StandardCharsets.US_ASCII)));
         return UriComponentsBuilder.fromUri(properties.oauthBaseUrl())
                 .path("/login/oauth/authorize")

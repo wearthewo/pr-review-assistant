@@ -64,6 +64,11 @@ class PublicationModelTest {
         assertThat(rendered.body()).hasSizeLessThanOrEqualTo(256)
                 .endsWith(GitHubReviewRenderer.MARKER_PREFIX + key + " -->");
     }
+    @Test void sanitizerRemovesBidirectionalDisplayControls() {
+        String sanitized = GitHubReviewRenderer.sanitize("safe ‮txt.exe‬ @team");
+
+        assertThat(sanitized).contains("safe", "txt.exe").doesNotContain("‮", "‬", "@team");
+    }
     @Test void codecRejectsUnknownVersionAndNeverExposesContent(){PublicationPayloadCodec codec=new PublicationPayloadCodec(20000);
         PublicationPayload payload=new PublicationPayload(1,"secret-like text",List.of(new PublicationComment("../../x",4,null,"body")));
         assertThat(codec.decode(codec.encode(payload))).isEqualTo(payload);

@@ -80,6 +80,19 @@ class GitHubAppJwtServiceTest {
     }
 
     @Test
+    void oversizedPrivateKeyIsRejectedWithoutUnboundedParsingOrDisclosure() throws Exception {
+        String oversized = "PRIVATE-KEY-SENTINEL-" + "x".repeat(PemPrivateKeyLoader.MAX_PEM_BYTES);
+        Path keyPath = Files.writeString(tempDirectory.resolve("oversized.pem"), oversized);
+
+        assertThatThrownBy(() -> service(keyPath).createJwt())
+                .isInstanceOf(GitHubException.class)
+                .extracting(Throwable::toString)
+                .asString()
+                .doesNotContain("PRIVATE-KEY-SENTINEL")
+                .contains("configuration is invalid");
+    }
+
+    @Test
     void jwtSecretDoesNotAppearInToString() {
         String jwt = "header.payload.signature-secret";
 

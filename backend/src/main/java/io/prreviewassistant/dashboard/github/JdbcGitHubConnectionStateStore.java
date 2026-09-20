@@ -20,9 +20,29 @@ public class JdbcGitHubConnectionStateStore implements GitHubConnectionStateStor
 
     @Override
     @Transactional
-    public void create(String stateHash, UUID applicationUserId, String pkceVerifier, Instant expiresAt, Instant now) {
-        jdbc.sql("DELETE FROM github_connection_states WHERE expires_at < :cutoff OR consumed_at < :cutoff")
-                .param("cutoff", utc(now.minusSeconds(3600))).update();
+    public void create(String stateHash, UUID applicationUserId, String pkceVerifier, Instant expiresAt, Instant now,
+            int maxActiveStatesPerUser) {
+        if (maxActiveStatesPerUser < 1 || maxActiveStatesPerUser > 20) {
+            throw new IllegalArgumentException("active GitHub connection state limit is invalid");
+        }
+        jdbc.sql("SELECT pg_advisory_xact_lock(hashtextextended(CAST(:userId AS text), 17))")
+                .param("userId", applicationUserId)
+                .query((resultSet, row) -> Boolean.TRUE).single();
+        jdbc.sql("DELETE FROM github_connection_states WHERE expires_at <= :now OR consumed_at < :consumedCutoff")
+                .param("now", utc(now)).param("consumedCutoff", utc(now.minusSeconds(3600))).update();
+        jdbc.sql("""
+                DELETE FROM github_connection_states
+                WHERE state_hash IN (
+                    SELECT state_hash
+                    FROM github_connection_states
+                    WHERE application_user_id = :userId
+                      AND consumed_at IS NULL
+                      AND expires_at > :now
+                    ORDER BY created_at DESC, state_hash DESC
+                    OFFSET :retain
+                )
+                """).param("userId", applicationUserId).param("now", utc(now))
+                .param("retain", maxActiveStatesPerUser - 1).update();
         jdbc.sql("""
                 INSERT INTO github_connection_states
                   (state_hash, application_user_id, pkce_verifier, expires_at, consumed_at, created_at)

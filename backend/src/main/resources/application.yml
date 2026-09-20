@@ -48,6 +48,7 @@ dashboard:
     callback-url: ${GITHUB_OAUTH_CALLBACK_URL:}
     oauth-base-url: ${GITHUB_OAUTH_BASE_URL:https://github.com}
     state-ttl: ${GITHUB_OAUTH_STATE_TTL:10m}
+    max-active-states-per-user: ${GITHUB_OAUTH_MAX_ACTIVE_STATES_PER_USER:5}
     max-pages: ${GITHUB_OAUTH_MAX_PAGES:10}
     max-installations: ${GITHUB_OAUTH_MAX_INSTALLATIONS:1000}
     max-response-bytes: ${GITHUB_OAUTH_MAX_RESPONSE_BYTES:262144}

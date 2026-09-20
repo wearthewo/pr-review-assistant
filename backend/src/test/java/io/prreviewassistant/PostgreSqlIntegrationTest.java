@@ -196,4 +196,73 @@ class PostgreSqlIntegrationTest {
             }
         }
     }
+
+    @Test
+    void v9PreservesPopulatedV8ConnectionStateAndAddsPruningIndex() throws SQLException {
+        String schema = "m17_history_" + UUID.randomUUID().toString().replace("-", "");
+        Flyway throughV8 = Flyway.configure()
+                .dataSource(postgresqlContainer.getJdbcUrl(), postgresqlContainer.getUsername(),
+                        postgresqlContainer.getPassword())
+                .schemas(schema)
+                .defaultSchema(schema)
+                .target(MigrationVersion.fromVersion("8"))
+                .load();
+        throughV8.migrate();
+        UUID userId = UUID.randomUUID();
+        OffsetDateTime now = OffsetDateTime.of(2026, 9, 20, 12, 0, 0, 0, ZoneOffset.UTC);
+
+        try (Connection connection = DriverManager.getConnection(
+                postgresqlContainer.getJdbcUrl(), postgresqlContainer.getUsername(),
+                postgresqlContainer.getPassword())) {
+            connection.setSchema(schema);
+            try (var user = connection.prepareStatement("""
+                    INSERT INTO application_users (id, auth_issuer, auth_subject, created_at, updated_at)
+                    VALUES (?, 'https://issuer.example/', 'm17-user', ?, ?)
+                    """);
+                    var state = connection.prepareStatement("""
+                    INSERT INTO github_connection_states
+                      (state_hash, application_user_id, pkce_verifier, expires_at, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """)) {
+                user.setObject(1, userId);
+                user.setObject(2, now);
+                user.setObject(3, now);
+                user.executeUpdate();
+                state.setString(1, "a".repeat(64));
+                state.setObject(2, userId);
+                state.setString(3, "v".repeat(43));
+                state.setObject(4, now.plusMinutes(10));
+                state.setObject(5, now);
+                state.executeUpdate();
+            }
+        }
+
+        Flyway.configure()
+                .dataSource(postgresqlContainer.getJdbcUrl(), postgresqlContainer.getUsername(),
+                        postgresqlContainer.getPassword())
+                .schemas(schema)
+                .defaultSchema(schema)
+                .load()
+                .migrate();
+
+        try (Connection connection = DriverManager.getConnection(
+                postgresqlContainer.getJdbcUrl(), postgresqlContainer.getUsername(),
+                postgresqlContainer.getPassword())) {
+            connection.setSchema(schema);
+            try (var statement = connection.createStatement();
+                    var rows = statement.executeQuery("""
+                            SELECT
+                              (SELECT count(*) FROM github_connection_states) AS states,
+                              (SELECT count(*) FROM pg_indexes
+                               WHERE schemaname = current_schema()
+                                 AND indexname = 'ix_github_connection_states_active_user') AS indexes
+                            """)) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getLong("states")).isEqualTo(1);
+                assertThat(rows.getLong("indexes")).isEqualTo(1);
+            } finally {
+                connection.createStatement().execute("DROP SCHEMA " + schema + " CASCADE");
+            }
+        }
+    }
 }

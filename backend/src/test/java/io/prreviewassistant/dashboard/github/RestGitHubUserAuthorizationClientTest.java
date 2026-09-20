@@ -123,7 +123,7 @@ class RestGitHubUserAuthorizationClientTest {
             MockServer oauth, MockServer api, int maxPages, int maxResponseBytes) {
         GitHubConnectionProperties properties = new GitHubConnectionProperties("client", "secret",
                 URI.create("https://app.example/github/callback"), oauth.baseUrl(), Duration.ofMinutes(10),
-                maxPages, 1000, maxResponseBytes);
+                5, maxPages, 1000, maxResponseBytes);
         return new RestGitHubUserAuthorizationClient(rest(oauth.baseUrl()), rest(api.baseUrl()),
                 new ObjectMapper(), properties);
     }

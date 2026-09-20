@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. In addition to the review pipeline and authenticated ownership boundary, it provides bounded read-only tenant repository, review-history, and current-period quota APIs. M16 instruments those boundaries with structured logs, low-cardinality Micrometer metrics, PostgreSQL queue gauges, and liveness/readiness endpoints. It contains no repository mutation, review detail, billing, quota mutation, tenant-management dashboard API, or external monitoring stack.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. In addition to the review pipeline and authenticated ownership boundary, it provides bounded read-only tenant repository, review-history, and current-period quota APIs. M16 instruments those boundaries with structured logs, low-cardinality Micrometer metrics, PostgreSQL queue gauges, and liveness/readiness endpoints. M17 adds focused application hardening and the reviewed limit inventory in `docs/security-hardening.md`. It contains no repository mutation, review detail, billing, quota mutation, tenant-management dashboard API, or external monitoring stack.
 
 ## Requirements
 
@@ -45,7 +45,7 @@ Check process liveness at `http://localhost:8080/actuator/health/liveness` and d
 
 On Windows, run `.\mvnw.cmd clean verify`. Integration tests start their own pinned PostgreSQL container and do not use the local Compose database.
 
-Flyway owns schema changes. V1-V7 retain their accepted responsibilities; V8 adds only short-lived `github_connection_states` with hashed state, application-user binding, PKCE verifier, expiry, and atomic consumption metadata. It stores no GitHub user token. Earlier migrations remain immutable. Hibernate uses `ddl-auto: validate` and never creates or updates the schema.
+Flyway owns schema changes. V1-V7 retain their accepted responsibilities; V8 adds only short-lived `github_connection_states` with hashed state, application-user binding, PKCE verifier, expiry, and atomic consumption metadata. V9 adds the partial per-user active-state index used by bounded pruning; it changes no stored credential or ownership semantics. Earlier migrations remain immutable. Hibernate uses `ddl-auto: validate` and never creates or updates the schema.
 
 ## Dashboard authentication and authorization
 
@@ -67,7 +67,7 @@ M13G's cross-feature integration fixture provisions two distinguishable tenants 
 
 ## GitHub ownership bootstrap
 
-`POST /api/dashboard/github-connection/start` and `POST /api/dashboard/github-connection/callback` require the same independently validated Auth0 bearer token as the session API. Configure the existing GitHub App's client ID/secret and exact frontend callback URL with `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, and `GITHUB_OAUTH_CALLBACK_URL`. The start operation creates high-entropy state plus S256 PKCE; only its SHA-256 hash and the necessary verifier are stored for ten minutes. Callback consumption is atomic and bound to the same internal application user.
+`POST /api/dashboard/github-connection/start` and `POST /api/dashboard/github-connection/callback` require the same independently validated Auth0 bearer token as the session API. Configure the existing GitHub App's client ID/secret and exact frontend callback URL with `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET`, and `GITHUB_OAUTH_CALLBACK_URL`. The start operation creates high-entropy state plus S256 PKCE; only its SHA-256 hash and the necessary verifier are stored for ten minutes. `GITHUB_OAUTH_MAX_ACTIVE_STATES_PER_USER` defaults to five and is constrained to 1-20; per-user transaction locking and indexed pruning make the ceiling safe across application instances. Callback consumption is atomic and bound to the same internal application user.
 
 The backend exchanges the code without redirects, verifies `GET /user`, and derives bounded pagination locally for `GET /user/installations`. Response bodies and installation counts are bounded. The user access token remains an opaque callback-local value. M13D1 maps only a personal installation whose numeric account ID equals the verified GitHub user ID; mere organization membership or repository collaboration is not translated to tenant ownership. The installation must already exist in M14. PostgreSQL serializes first-owner binding, same-user repeats are idempotent, and an existing other owner causes a non-enumerating conflict.
 
