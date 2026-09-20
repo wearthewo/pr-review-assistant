@@ -20,6 +20,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import io.prreviewassistant.observability.ApplicationMetrics;
+
 public final class DeterministicFindingSuppressionEngine implements FindingSuppressionEngine {
     private static final int MAX_CANDIDATES = 10;
     private static final int MAX_LOCATION_SPAN = 200;
@@ -73,10 +75,17 @@ public final class DeterministicFindingSuppressionEngine implements FindingSuppr
                     .thenComparing(ReviewFinding::id);
 
     private final FindingSuppressionProperties properties;
+    private final ApplicationMetrics metrics;
     private final UnifiedDiffLineMapper lineMapper = new UnifiedDiffLineMapper();
 
     public DeterministicFindingSuppressionEngine(FindingSuppressionProperties properties) {
+        this(properties, ApplicationMetrics.noop());
+    }
+
+    public DeterministicFindingSuppressionEngine(
+            FindingSuppressionProperties properties, ApplicationMetrics metrics) {
         this.properties = Objects.requireNonNull(properties, "properties is required");
+        this.metrics = Objects.requireNonNull(metrics, "metrics is required");
     }
 
     @Override
@@ -123,6 +132,11 @@ public final class DeterministicFindingSuppressionEngine implements FindingSuppr
         SuppressionSummary summary = new SuppressionSummary(
                 analysis.findings().size(), distinct.size(),
                 analysis.findings().size() - distinct.size(), suppressed);
+        analysis.findings().forEach(finding ->
+                metrics.findingsGenerated(finding.category(), finding.severity(), 1));
+        distinct.forEach(finding ->
+                metrics.findingsAccepted(finding.category(), finding.severity(), 1));
+        suppressed.forEach(metrics::findingsSuppressed);
         return new ValidatedReview(analysis.target(), distinct, summary, analysis.metadata());
     }
 

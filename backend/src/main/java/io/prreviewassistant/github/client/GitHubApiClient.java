@@ -9,6 +9,12 @@ import io.prreviewassistant.github.auth.InstallationTokenProvider;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.client.RestClient;
 import java.util.Base64;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.function.Supplier;
+import io.prreviewassistant.observability.ApplicationMetrics;
+import io.prreviewassistant.observability.ApplicationMetrics.GitHubOperation;
 
 public final class GitHubApiClient {
 
@@ -16,22 +22,32 @@ public final class GitHubApiClient {
 
     private final RestClient restClient;
     private final InstallationTokenProvider tokenProvider;
+    private final ApplicationMetrics metrics;
+    private final Clock clock;
 
     public GitHubApiClient(RestClient restClient, InstallationTokenProvider tokenProvider) {
+        this(restClient, tokenProvider, ApplicationMetrics.noop(), Clock.systemUTC());
+    }
+
+    public GitHubApiClient(RestClient restClient, InstallationTokenProvider tokenProvider,
+            ApplicationMetrics metrics, Clock clock) {
         this.restClient = restClient;
         this.tokenProvider = tokenProvider;
+        this.metrics = metrics;
+        this.clock = clock;
     }
 
     public AccessibleRepositories listAccessibleRepositories(long installationId) {
-        InstallationAccessToken token = tokenProvider.tokenFor(installationId);
-        String responseBody;
-        responseBody = GitHubHttpResponses.read(restClient.get()
+        return observe(GitHubOperation.REPOSITORY, () -> {
+            InstallationAccessToken token = tokenProvider.tokenFor(installationId);
+            String responseBody = GitHubHttpResponses.read(restClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .path("/installation/repositories")
                         .queryParam("per_page", 1)
                         .build())
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value()), false);
-        return parse(responseBody);
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value()), false);
+            return parse(responseBody);
+        });
     }
 
     public GitHubRepositoryMetadata getRepository(
@@ -41,13 +57,15 @@ public final class GitHubApiClient {
         if (repositoryId <= 0) {
             throw GitHubException.malformedResponse();
         }
-        InstallationAccessToken token = tokenProvider.tokenFor(installationId);
-        GitHubHttpResponse response = GitHubHttpResponses.read(restClient.get()
+        return observe(GitHubOperation.REPOSITORY, () -> {
+            InstallationAccessToken token = tokenProvider.tokenFor(installationId);
+            GitHubHttpResponse response = GitHubHttpResponses.read(restClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .pathSegment("repositories", Long.toString(repositoryId))
                         .build())
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value()), false, maxResponseBytes);
-        return parseRepository(response.body());
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value()), false, maxResponseBytes);
+            return parseRepository(response.body());
+        });
     }
 
     public GitHubPullRequestMetadata getPullRequest(
@@ -60,13 +78,15 @@ public final class GitHubApiClient {
         if (pullRequestNumber <= 0) {
             throw GitHubException.malformedResponse();
         }
-        InstallationAccessToken token = tokenProvider.tokenFor(installationId);
-        GitHubHttpResponse response = GitHubHttpResponses.read(restClient.get()
+        return observe(GitHubOperation.PULL_REQUEST, () -> {
+            InstallationAccessToken token = tokenProvider.tokenFor(installationId);
+            GitHubHttpResponse response = GitHubHttpResponses.read(restClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .pathSegment("repos", owner, repository, "pulls", Integer.toString(pullRequestNumber))
                         .build())
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value()), false, maxResponseBytes);
-        return parsePullRequest(response.body());
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value()), false, maxResponseBytes);
+            return parsePullRequest(response.body());
+        });
     }
 
     public GitHubChangedFilePage listPullRequestFiles(
@@ -81,16 +101,18 @@ public final class GitHubApiClient {
         if (pullRequestNumber <= 0 || page <= 0 || perPage <= 0 || perPage > 100) {
             throw GitHubException.malformedResponse();
         }
-        InstallationAccessToken token = tokenProvider.tokenFor(installationId);
-        GitHubHttpResponse response = GitHubHttpResponses.read(restClient.get()
+        return observe(GitHubOperation.CHANGED_FILES, () -> {
+            InstallationAccessToken token = tokenProvider.tokenFor(installationId);
+            GitHubHttpResponse response = GitHubHttpResponses.read(restClient.get()
                 .uri(uriBuilder -> uriBuilder
                         .pathSegment("repos", owner, repository, "pulls",
                                 Integer.toString(pullRequestNumber), "files")
                         .queryParam("per_page", perPage)
                         .queryParam("page", page)
                         .build())
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value()), false, maxResponseBytes);
-        return new GitHubChangedFilePage(parseFiles(response.body()), response.hasNextPage());
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value()), false, maxResponseBytes);
+            return new GitHubChangedFilePage(parseFiles(response.body()), response.hasNextPage());
+        });
     }
 
     public GitHubRepositoryFile getRepositoryFile(long installationId, String owner, String repository,
@@ -99,13 +121,31 @@ public final class GitHubApiClient {
         if (!isSafeRepositoryPath(path) || refSha == null || !refSha.matches("[0-9a-fA-F]{40,64}")) {
             throw GitHubException.malformedResponse();
         }
-        InstallationAccessToken token = tokenProvider.tokenFor(installationId);
-        GitHubHttpResponse response = GitHubHttpResponses.read(restClient.get()
+        return observe(GitHubOperation.CONTENTS, () -> {
+            InstallationAccessToken token = tokenProvider.tokenFor(installationId);
+            GitHubHttpResponse response = GitHubHttpResponses.read(restClient.get()
                 .uri(uriBuilder -> uriBuilder.pathSegment("repos", owner, repository, "contents")
                         .pathSegment(path.split("/"))
                         .queryParam("ref", refSha).build())
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value()), false, maxResponseBytes);
-        return parseRepositoryFile(response.body());
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value()), false, maxResponseBytes);
+            return parseRepositoryFile(response.body());
+        });
+    }
+
+    private <T> T observe(GitHubOperation operation, Supplier<T> call) {
+        Instant startedAt = clock.instant();
+        try {
+            T result = call.get();
+            metrics.github(operation, "success", Duration.between(startedAt, clock.instant()));
+            return result;
+        } catch (GitHubException exception) {
+            metrics.github(operation, exception.type().name().toLowerCase(java.util.Locale.ROOT),
+                    Duration.between(startedAt, clock.instant()));
+            throw exception;
+        } catch (RuntimeException exception) {
+            metrics.github(operation, "unexpected_failure", Duration.between(startedAt, clock.instant()));
+            throw exception;
+        }
     }
 
     private AccessibleRepositories parse(String responseBody) {

@@ -16,6 +16,9 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.prreviewassistant.observability.ApplicationMetrics;
+
 import org.junit.jupiter.api.Test;
 
 class ReviewJobWorkerTest {
@@ -108,6 +111,40 @@ class ReviewJobWorkerTest {
         verify(store).retry(first.id(), first.claimToken(), NOW.plusSeconds(10),
                 new ReviewJobErrorCode("UNEXPECTED_HANDLER_FAILURE"), NOW);
         verify(store).complete(second.id(), second.claimToken(), NOW);
+    }
+
+    @Test
+    void recordsCompletedRetryAndRecoveredLeaseSemantics() {
+        ReviewJobStore store = mock(ReviewJobStore.class);
+        ClaimedReviewJob completed = claim(1, 3);
+        ClaimedReviewJob recoveredRetry = new ClaimedReviewJob(
+                UUID.randomUUID(), UUID.randomUUID(), 2, 3, NOW, NOW.plus(LEASE),
+                null, null, true);
+        when(store.claimDue(NOW, LEASE, 7)).thenReturn(List.of(completed, recoveredRetry));
+        when(store.complete(completed.id(), completed.claimToken(), NOW)).thenReturn(true);
+        when(store.retry(eq(recoveredRetry.id()), eq(recoveredRetry.claimToken()),
+                eq(NOW.plusSeconds(20)), eq(new ReviewJobErrorCode("TEMPORARY_FAILURE")), eq(NOW)))
+                .thenReturn(true);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        AtomicInteger call = new AtomicInteger();
+        ReviewJobHandler handler = ignored -> call.getAndIncrement() == 0
+                ? ReviewJobExecutionResult.success()
+                : ReviewJobExecutionResult.retryable("TEMPORARY_FAILURE");
+        ReviewWorkerProperties properties =
+                new ReviewWorkerProperties(true, Duration.ofSeconds(5), 7, LEASE);
+        ReviewJobWorker worker = new ReviewJobWorker(store, handler, properties, RETRY_POLICY,
+                Clock.fixed(NOW, ZoneOffset.UTC), new ApplicationMetrics(registry));
+
+        worker.pollOnce();
+
+        assertThat(registry.get(ApplicationMetrics.PREFIX + ".review.jobs.claimed").counter().count())
+                .isEqualTo(2);
+        assertThat(registry.get(ApplicationMetrics.PREFIX + ".review.jobs.stale.recovered").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.get(ApplicationMetrics.PREFIX + ".review.jobs.outcomes")
+                .tag("outcome", "completed").counter().count()).isEqualTo(1);
+        assertThat(registry.get(ApplicationMetrics.PREFIX + ".review.jobs.outcomes")
+                .tag("outcome", "retry").counter().count()).isEqualTo(1);
     }
 
     private ReviewJobWorker worker(

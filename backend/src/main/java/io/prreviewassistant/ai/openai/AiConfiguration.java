@@ -6,6 +6,9 @@ import com.openai.client.okhttp.OpenAIOkHttpClient;
 import io.prreviewassistant.ai.AiProvider;
 import io.prreviewassistant.ai.AiGenerationProfile;
 import io.prreviewassistant.ai.ReviewAiProperties;
+import io.prreviewassistant.ai.ObservedAiProvider;
+import io.prreviewassistant.observability.ApplicationMetrics;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -40,11 +43,14 @@ class AiConfiguration {
     @Bean
     @ConditionalOnProperty(prefix = "review.ai", name = "enabled", havingValue = "true")
     AiProvider aiProvider(OpenAiGateway gateway, OpenAiProperties openAiProperties,
-                          ReviewAiProperties aiProperties, ObjectMapper objectMapper, Clock clock) {
+                          ReviewAiProperties aiProperties, ObjectMapper objectMapper, Clock clock,
+                          ObjectProvider<ApplicationMetrics> metricsProvider) {
         if (aiProperties.provider() != ReviewAiProperties.Provider.OPENAI) {
             throw new IllegalStateException("Configured AI provider is unsupported");
         }
-        return new OpenAiProvider(gateway, openAiProperties, aiProperties, objectMapper, clock);
+        return new ObservedAiProvider(
+                new OpenAiProvider(gateway, openAiProperties, aiProperties, objectMapper, clock),
+                metricsProvider.getIfAvailable(ApplicationMetrics::noop), clock);
     }
 
     @Bean

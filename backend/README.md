@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. In addition to the review pipeline and authenticated ownership boundary, it provides bounded read-only tenant repository, review-history, and current-period quota APIs. M13G verifies these APIs together through the same application-user/membership boundary against PostgreSQL. It contains no repository mutation, review detail, billing, quota mutation, or tenant-management dashboard API.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. In addition to the review pipeline and authenticated ownership boundary, it provides bounded read-only tenant repository, review-history, and current-period quota APIs. M16 instruments those boundaries with structured logs, low-cardinality Micrometer metrics, PostgreSQL queue gauges, and liveness/readiness endpoints. It contains no repository mutation, review detail, billing, quota mutation, tenant-management dashboard API, or external monitoring stack.
 
 ## Requirements
 
@@ -35,7 +35,7 @@ Set-Location backend
 
 The local profile imports the ignored root `.env` file. Other environments provide `DB_JDBC_URL`, `DB_USERNAME`, and `DB_PASSWORD` directly. Missing required database configuration causes startup to fail; there is no embedded database fallback.
 
-Check readiness at `http://localhost:8080/actuator/health`. Only the health Actuator endpoint is exposed over HTTP, and health details are hidden.
+Check process liveness at `http://localhost:8080/actuator/health/liveness` and database-backed readiness at `http://localhost:8080/actuator/health/readiness`. General health remains public with details hidden. `/actuator/prometheus` is exposed for future scraping but requires the existing authenticated Spring Security boundary; sensitive Actuator endpoints remain unexposed. See `docs/observability.md` for the signal inventory and local commands.
 
 ## Test
 

@@ -21,6 +21,10 @@ Trust boundaries exist between GitHub and webhook ingestion, clients and the fut
 
 | Threat | Example impact | Required mitigation direction |
 | --- | --- | --- |
+| Correlation-header injection or cross-request MDC leak | Attacker creates oversized/control-bearing logs or one tenant's correlation value appears on another request | Accept only a 1-64 character ASCII-safe identifier, generate a UUID otherwise, and restore/remove MDC in `finally` |
+| Metric-cardinality or telemetry-content attack | Attacker-controlled IDs, paths, messages, or source exhaust the monitoring backend or disclose customer content | Use only controlled enum/fixed labels; keep identifiers in bounded logs and exclude source, prompts, responses, configuration, and secrets from all telemetry |
+| Public operational endpoint disclosure | Queue/customer behavior, runtime configuration, or secrets become remotely enumerable | Keep health details hidden, require authentication for Prometheus export, and expose no environment/configuration/heap/thread/generic metric endpoints |
+| Observability failure changes product state | Registry or queue-gauge failure rolls back a webhook, job, publication, or quota transition | Keep telemetry best effort and outside authoritative state; catch metric failures and return `NaN` for failed scrape-time aggregates |
 | GitHub webhook forgery | An attacker creates unauthorized durable input or actions | Verify HMAC-SHA256 over the exact bounded raw body with constant-time comparison; reject before parsing or persistence; protect and rotate the distinct webhook secret; subscribe the App only to needed event types |
 | Webhook replay or duplicate delivery | Duplicate work, cost, or GitHub comments | Atomically deduplicate the opaque globally unique delivery identifier at ingress; future job creation and publication must retain their own idempotency guards |
 | Different deliveries for the same PR revision | Duplicate review jobs and eventual review cost | Uniquely key review work by authenticated installation ID, numeric repository ID, PR number, and head object ID; use conflict-safe insertion rather than select-before-insert |

@@ -2,7 +2,7 @@
 
 ## Current state
 
-The backend is complete through M15. M13G closes integration and browser security testing for the Node.js 24 LTS / Next.js 16.3.5 read-only dashboard. It contains no review detail/retry, repository mutation, settings feature, quota mutation, organization ownership flow, billing, CI/CD workflow, or deployment definition.
+The backend is complete through M16. M13G closes integration and browser security testing for the Node.js 24 LTS / Next.js 16.3.5 read-only dashboard; M16 adds application instrumentation without an external monitoring stack. It contains no review detail/retry, repository mutation, settings feature, quota mutation, organization ownership flow, billing, CI/CD workflow, or deployment definition.
 
 ## Prerequisites
 
@@ -42,7 +42,7 @@ Set-Location backend
 .\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-The health endpoint is `http://localhost:8080/actuator/health`. The database health contributor is enabled, only the health endpoint is exposed over HTTP, and details are hidden.
+Health is available at `http://localhost:8080/actuator/health`, process liveness at `/actuator/health/liveness`, and database-backed readiness at `/actuator/health/readiness`; details remain hidden. `/actuator/prometheus` is exposed but requires the existing authenticated backend security boundary. No external metrics service is required locally. Console logs are structured JSON and responses carry a bounded `X-Correlation-ID`. The complete signal inventory and privacy rules are in [observability.md](observability.md).
 
 ## Local frontend workflow
 
@@ -101,7 +101,7 @@ Ignore syntax is a deliberately small logical-path matcher: literals, `*`, `**`,
 
 GitHub App authentication additionally requires `GITHUB_APP_ID` and `GITHUB_PRIVATE_KEY_PATH`. `GITHUB_API_BASE_URL` defaults to GitHub's public API and is overridable for tests or compatible enterprise deployments. Installation ID is not global configuration; each internal operation supplies it because one App serves many installations.
 
-Webhook ingestion separately requires `GITHUB_WEBHOOK_SECRET`, set to the same random, high-entropy value configured for the GitHub App webhook. It is not the App private key. `GITHUB_WEBHOOK_MAX_BODY_SIZE` defaults to `1MB`; values must be positive and no greater than GitHub's 25 MiB cap. Keep both credentials outside source control and do not print them. Actuator exposes only health and contains no GitHub credential details.
+Webhook ingestion separately requires `GITHUB_WEBHOOK_SECRET`, set to the same random, high-entropy value configured for the GitHub App webhook. It is not the App private key. `GITHUB_WEBHOOK_MAX_BODY_SIZE` defaults to `1MB`; values must be positive and no greater than GitHub's 25 MiB cap. Keep both credentials outside source control and do not print them. Actuator exposes public health with hidden details and authenticated Prometheus export; neither contains GitHub credential details.
 
 For local development, download a private key from the GitHub App settings, store it outside this repository with access restricted to your account, and set `GITHUB_PRIVATE_KEY_PATH` in the ignored `.env` to its absolute path. GitHub-generated PKCS#1 PEM and PKCS#8 PEM are accepted. Do not paste PEM content into YAML or `.env`, commit it, print it, or pass it to tests. The repository's `*.pem` ignore rule is defense in depth, not permission to store keys here.
 

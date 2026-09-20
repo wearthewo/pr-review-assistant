@@ -7,13 +7,18 @@ import io.prreviewassistant.github.client.GitHubReviewPage;
 import io.prreviewassistant.github.client.GitHubReviewPublisher;
 import java.time.Clock;
 import java.time.Instant;
+import io.prreviewassistant.observability.ApplicationMetrics;
 
 public final class ReviewPublicationService {
     private static final int MAX_RESPONSE_BYTES=512*1024;
     private final PublicationStore store; private final PublicationPayloadCodec codec;
     private final GitHubReviewPublisher client; private final ReviewPublicationProperties properties; private final Clock clock;
+    private final ApplicationMetrics metrics;
     public ReviewPublicationService(PublicationStore store,PublicationPayloadCodec codec,GitHubReviewPublisher client,
-            ReviewPublicationProperties properties,Clock clock){this.store=store;this.codec=codec;this.client=client;this.properties=properties;this.clock=clock;}
+            ReviewPublicationProperties properties,Clock clock){
+        this(store, codec, client, properties, clock, ApplicationMetrics.noop());}
+    public ReviewPublicationService(PublicationStore store,PublicationPayloadCodec codec,GitHubReviewPublisher client,
+            ReviewPublicationProperties properties,Clock clock,ApplicationMetrics metrics){this.store=store;this.codec=codec;this.client=client;this.properties=properties;this.clock=clock;this.metrics=metrics;}
 
     public PublicationExecutionResult publish(ClaimedPublicationJob job){
         ReviewPublication publication=store.find(job.publicationId()).orElse(null);
@@ -56,6 +61,7 @@ public final class ReviewPublicationService {
                         publication.repositoryName(),publication.pullRequestNumber(),page,MAX_RESPONSE_BYTES);
                 var match=response.reviews().stream().filter(r->r.body()!=null&&r.body().contains(marker)).findFirst();
                 if(match.isPresent()){
+                    metrics.publicationReconciled();
                     Instant published=match.get().publishedAt()==null?clock.instant():match.get().publishedAt();
                     return store.markPublished(publication.id(),match.get().id(),published,clock.instant())
                             ?PublicationExecutionResult.success():PublicationExecutionResult.retryable("PUBLICATION_STATE_CHANGED");

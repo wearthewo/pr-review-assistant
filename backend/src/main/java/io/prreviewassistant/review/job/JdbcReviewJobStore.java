@@ -104,7 +104,7 @@ public class JdbcReviewJobStore implements ReviewJobStore {
         OffsetDateTime timestamp = utc(now);
         expireExhaustedClaims(timestamp, batchSize);
         List<ClaimCandidate> candidates = jdbcClient.sql("""
-                        SELECT job.id, job.attempts, job.max_attempts,
+                        SELECT job.id, job.status, job.attempts, job.max_attempts,
                                job.github_installation_id, job.github_repository_id,
                                job.github_pull_request_number, job.github_head_sha,
                                job.tenant_id, job.tenant_repository_id,
@@ -125,6 +125,7 @@ public class JdbcReviewJobStore implements ReviewJobStore {
                 .param("batchSize", batchSize)
                 .query((resultSet, rowNumber) -> new ClaimCandidate(
                         resultSet.getObject("id", UUID.class),
+                        ReviewJobStatus.valueOf(resultSet.getString("status")),
                         resultSet.getInt("attempts"),
                         resultSet.getInt("max_attempts"),
                         reviewTarget(
@@ -162,7 +163,8 @@ public class JdbcReviewJobStore implements ReviewJobStore {
                     .param("id", candidate.id())
                     .update();
             claims.add(new ClaimedReviewJob(candidate.id(), claimToken, attempt,
-                    candidate.maxAttempts(), now, expiresAt, candidate.reviewTarget(), candidate.tenantContext()));
+                    candidate.maxAttempts(), now, expiresAt, candidate.reviewTarget(), candidate.tenantContext(),
+                    candidate.status() == ReviewJobStatus.PROCESSING));
         }
         return List.copyOf(claims);
     }
@@ -291,7 +293,7 @@ public class JdbcReviewJobStore implements ReviewJobStore {
                 githubInstallationId, githubRepositoryId);
     }
 
-    private record ClaimCandidate(UUID id, int attempts, int maxAttempts,
+    private record ClaimCandidate(UUID id, ReviewJobStatus status, int attempts, int maxAttempts,
             ReviewTarget reviewTarget, TenantContext tenantContext) {
     }
 }

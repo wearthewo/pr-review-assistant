@@ -15,6 +15,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+import io.prreviewassistant.observability.ApplicationMetrics;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(GitHubAppProperties.class)
@@ -62,8 +63,10 @@ class GitHubHttpConfiguration {
     @Bean
     InstallationTokenRequester installationTokenRequester(
             RestClient gitHubRestClient,
-            GitHubAppJwtProvider jwtProvider) {
-        return new GitHubInstallationTokenClient(gitHubRestClient, jwtProvider);
+            GitHubAppJwtProvider jwtProvider,
+            ApplicationMetrics metrics,
+            Clock githubClock) {
+        return new GitHubInstallationTokenClient(gitHubRestClient, jwtProvider, metrics, githubClock);
     }
 
     @Bean
@@ -77,12 +80,15 @@ class GitHubHttpConfiguration {
     @Bean
     GitHubApiClient gitHubApiClient(
             RestClient gitHubRestClient,
-            InstallationTokenProvider tokenProvider) {
-        return new GitHubApiClient(gitHubRestClient, tokenProvider);
+            InstallationTokenProvider tokenProvider,
+            ApplicationMetrics metrics,
+            Clock githubClock) {
+        return new GitHubApiClient(gitHubRestClient, tokenProvider, metrics, githubClock);
     }
 
     @Bean
-    GitHubReviewClient gitHubReviewClient(RestClient gitHubRestClient, InstallationTokenProvider tokenProvider) {
-        return new GitHubReviewClient(gitHubRestClient, tokenProvider);
+    GitHubReviewClient gitHubReviewClient(RestClient gitHubRestClient, InstallationTokenProvider tokenProvider,
+            ApplicationMetrics metrics, Clock githubClock) {
+        return new GitHubReviewClient(gitHubRestClient, tokenProvider, metrics, githubClock);
     }
 }

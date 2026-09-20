@@ -28,6 +28,8 @@ M13F PostgreSQL/Spring integration tests cover OWNER/MEMBER reads, non-enumerati
 
 M13G adds one cross-feature Spring/PostgreSQL fixture spanning session, repositories, reviews, and usage for OWNER and MEMBER identities, plus cross-tenant attacks on all resource endpoints. Frontend regressions prove authorized workspace navigation continuity and incremental cancellation of chunked oversized responses. Playwright 1.63.0 runs nine scenarios on desktop Chromium and Pixel 7 (18 project executions): real unauthenticated Next.js routes, CSP/headers/CSRF, test-only deterministic unbound and authorized presentation states, workspace tampering, inert hostile input, and responsive accessibility/navigation. The fixture is a separate test process and introduces no production auth hook; real Auth0/GitHub smoke testing remains deferred.
 
+M16 tests application instrumentation semantics rather than Micrometer internals. `SimpleMeterRegistry` verifies controlled webhook, worker, GitHub, AI, finding-funnel, publication, reconciliation, and usage outcomes plus forbidden label keys. Mock-request tests prove correlation validation/generation and MDC cleanup. PostgreSQL Testcontainers establishes actual review/publication queue states and verifies depth, delay, stale-lease, and oldest-actionable-age gauges; Spring integration tests cover liveness, readiness, protected Prometheus export, and expected exported names. Representative sentinel tests inspect structured log events for payload/secret exclusion. Existing frontend unit and browser suites remain the observability regression boundary because M16 adds no frontend UI.
+
 ## Test layers
 
 ### Unit tests

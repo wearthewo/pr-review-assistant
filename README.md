@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. M13G closes the integrated read-only dashboard phase with cross-feature PostgreSQL coverage and desktop/mobile browser security tests; review details, settings, billing, and repository mutation remain unimplemented.
+> Project status: **pre-alpha**. M16 adds privacy-preserving application observability over the accepted review and dashboard system; production monitoring infrastructure, review details, settings, billing, and repository mutation remain unimplemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -66,6 +66,7 @@ Root policy and contributor files apply across the monorepo. Directory READMEs d
 - [Threat model](docs/threat-model.md)
 - [Testing strategy](docs/testing-strategy.md)
 - [Development guide](docs/development.md)
+- [Observability](docs/observability.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 
@@ -82,9 +83,11 @@ cd backend
 
 On Windows PowerShell, use `Copy-Item .env.example .env` and run `mvnw.cmd` from `backend`.
 
-After startup, `GET http://localhost:8080/actuator/health` is the operational endpoint. `POST http://localhost:8080/api/webhooks/github` is the GitHub boundary and authenticates requests with `X-Hub-Signature-256`. See [docs/development.md](docs/development.md) for configuration, test, and shutdown commands.
+After startup, public health, liveness, and readiness endpoints are under `http://localhost:8080/actuator/health`; Prometheus-format metrics at `/actuator/prometheus` require authentication. `POST http://localhost:8080/api/webhooks/github` is the GitHub boundary and authenticates requests with `X-Hub-Signature-256`. See [docs/development.md](docs/development.md) and [docs/observability.md](docs/observability.md) for configuration, inspection, test, and shutdown commands.
 
 ## Current milestone
+
+M16 adds structured JSON operational logs, bounded HTTP correlation IDs, low-cardinality Micrometer metrics, PostgreSQL queue depth/age gauges, and explicit liveness/readiness groups. The Prometheus registry is the only new dependency; no Prometheus server, monitoring vendor, frontend observability UI, database table, or migration is added. `/actuator/prometheus` is exposed only behind the existing authenticated Spring boundary, while health details remain hidden. Instrumentation is best effort and cannot change authoritative transactions or idempotency. See [docs/observability.md](docs/observability.md) for the exact metric and tag inventory.
 
 M13D1 connects an authenticated SaaS user to an existing M14 tenant only through the existing GitHub App's server-side user authorization flow. Next.js accepts no installation or role authority from the browser. Spring creates a high-entropy state and PKCE challenge, stores only the state hash with a ten-minute lifetime and application-user binding, exchanges the callback code server-side, verifies the stable GitHub user ID, and reads bounded pages of `GET /user/installations`. The temporary GitHub user token is never persisted, returned, rendered, or logged.
 

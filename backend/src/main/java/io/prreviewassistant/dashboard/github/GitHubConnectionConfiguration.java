@@ -9,6 +9,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
+import io.prreviewassistant.observability.ApplicationMetrics;
+import java.time.Clock;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(GitHubConnectionProperties.class)
@@ -32,8 +34,10 @@ class GitHubConnectionConfiguration {
             RestClient gitHubUserOAuthRestClient,
             @Qualifier("gitHubRestClient") RestClient gitHubRestClient,
             ObjectMapper objectMapper,
-            GitHubConnectionProperties properties) {
+            GitHubConnectionProperties properties,
+            ApplicationMetrics metrics,
+            Clock clock) {
         return new RestGitHubUserAuthorizationClient(
-                gitHubUserOAuthRestClient, gitHubRestClient, objectMapper, properties);
+                gitHubUserOAuthRestClient, gitHubRestClient, objectMapper, properties, metrics, clock);
     }
 }

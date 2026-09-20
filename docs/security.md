@@ -153,6 +153,16 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 - Dashboard navigation carries only an already-authorized tenant UUID to preserve workspace continuity. Every destination matches it to fresh memberships and every Spring endpoint reauthorizes it, preventing navigation state from becoming tenant authority.
 - The overview reports only membership role and static pipeline/product state. It does not fabricate or infer repository, review, finding, quota, token, or spend metrics. Deferred navigation has no business routes or mutation controls.
 
+### Observability controls implemented in M16
+
+- HTTP correlation IDs accept only a 64-character ASCII-safe form; invalid input is replaced, the safe value is returned to the caller, and MDC is cleared/restored after every request.
+- Metric dimensions are fixed application values. Tenant/user/job/publication/delivery/repository/PR/SHA identifiers, URLs, messages, and customer content are forbidden as labels. Durable identifiers are limited to structured diagnostic logs.
+- Logs contain bounded identifiers, attempts, outcomes, and safe error codes—not credentials, authorization headers, cookies, OAuth material, webhook bodies/signatures, repository source, patches, prompts, model responses, findings, or `.reviewbot.yml`.
+- `/actuator/prometheus` requires authentication. Health details remain hidden, and environment, configuration, bean, heap/thread dump, and generic metric inspection endpoints remain unexposed.
+- Liveness excludes database and third-party providers. Readiness includes PostgreSQL; transient GitHub/OpenAI degradation is signaled through controlled metrics rather than provoking restarts.
+- Queue gauges perform indexed scalar aggregates only at observation time. Metric failures return no authoritative result and cannot alter or roll back business state.
+- Prometheus/Grafana/log backends, alerts, public metrics, and an observability UI are not introduced. Production scrape identity, transport, and retention remain deployment concerns.
+
 ### AI transport controls implemented in M8
 
 - AI is disabled by default. Enabling OpenAI requires a runtime API key; the key is redacted by configuration objects and never logged, persisted, exposed through Actuator, or copied into errors.

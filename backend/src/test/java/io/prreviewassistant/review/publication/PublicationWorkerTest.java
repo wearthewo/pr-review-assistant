@@ -14,6 +14,8 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.prreviewassistant.observability.ApplicationMetrics;
 
 class PublicationWorkerTest {
 
@@ -63,6 +65,28 @@ class PublicationWorkerTest {
                 exhausted.claimToken(), "GITHUB_TRANSIENT_FAILURE", NOW);
         verify(store).failPublicationAndJob(terminal.id(), terminal.publicationId(),
                 terminal.claimToken(), "GITHUB_REVIEW_INVALID", NOW);
+    }
+
+    @Test
+    void recordsAmbiguousPublicationSeparatelyFromOrdinaryFailure() {
+        PublicationStore store = mock(PublicationStore.class);
+        ReviewPublicationService service = mock(ReviewPublicationService.class);
+        ReviewPublicationProperties properties = properties(true, 1);
+        ClaimedPublicationJob claim = claim(1, 3);
+        when(store.claimDue(NOW, properties.leaseDuration(), 1)).thenReturn(List.of(claim));
+        when(service.publish(claim)).thenReturn(
+                PublicationExecutionResult.retryable("GITHUB_PUBLICATION_AMBIGUOUS"));
+        when(store.retryJob(claim.id(), claim.claimToken(), NOW.plusSeconds(10),
+                "GITHUB_PUBLICATION_AMBIGUOUS", NOW)).thenReturn(true);
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        PublicationWorker worker = new PublicationWorker(store, service, properties,
+                new ReviewJobRetryPolicy(properties.retryBaseDelay(), properties.retryMaxDelay()),
+                Clock.fixed(NOW, ZoneOffset.UTC), new ApplicationMetrics(registry));
+
+        worker.pollOnce();
+
+        assertThat(registry.get(ApplicationMetrics.PREFIX + ".publication.attempts")
+                .tag("outcome", "ambiguous").counter().count()).isEqualTo(1);
     }
 
     private PublicationWorker worker(

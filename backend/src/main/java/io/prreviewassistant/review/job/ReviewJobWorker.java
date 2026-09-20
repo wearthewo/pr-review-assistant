@@ -2,11 +2,15 @@ package io.prreviewassistant.review.job;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.List;
+
+import io.prreviewassistant.observability.ApplicationMetrics;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public final class ReviewJobWorker {
@@ -20,6 +24,23 @@ public final class ReviewJobWorker {
     private final ReviewWorkerProperties properties;
     private final ReviewJobRetryPolicy retryPolicy;
     private final Clock clock;
+    private final ApplicationMetrics metrics;
+
+    @Autowired
+    public ReviewJobWorker(
+            ReviewJobStore store,
+            ReviewJobHandler handler,
+            ReviewWorkerProperties properties,
+            ReviewJobRetryPolicy retryPolicy,
+            Clock clock,
+            ApplicationMetrics metrics) {
+        this.store = store;
+        this.handler = handler;
+        this.properties = properties;
+        this.retryPolicy = retryPolicy;
+        this.clock = clock;
+        this.metrics = metrics;
+    }
 
     public ReviewJobWorker(
             ReviewJobStore store,
@@ -27,11 +48,7 @@ public final class ReviewJobWorker {
             ReviewWorkerProperties properties,
             ReviewJobRetryPolicy retryPolicy,
             Clock clock) {
-        this.store = store;
-        this.handler = handler;
-        this.properties = properties;
-        this.retryPolicy = retryPolicy;
-        this.clock = clock;
+        this(store, handler, properties, retryPolicy, clock, ApplicationMetrics.noop());
     }
 
     public int pollOnce() {
@@ -40,17 +57,23 @@ public final class ReviewJobWorker {
         }
         List<ClaimedReviewJob> claims = store.claimDue(
                 clock.instant(), properties.leaseDuration(), properties.batchSize());
+        metrics.reviewClaims(claims.size());
+        metrics.staleReviewClaimsRecovered((int) claims.stream().filter(ClaimedReviewJob::recoveredLease).count());
         for (ClaimedReviewJob claim : claims) {
             try {
                 execute(claim);
             } catch (RuntimeException exception) {
-                LOGGER.warn("Review job transition failed: jobId={}, attempt={}", claim.id(), claim.attempt());
+                LOGGER.atWarn().addKeyValue("event", "review_job_transition_failed")
+                        .addKeyValue("review_job_id", claim.id())
+                        .addKeyValue("attempt", claim.attempt())
+                        .log("Review job transition failed");
             }
         }
         return claims.size();
     }
 
     private void execute(ClaimedReviewJob claim) {
+        Instant startedAt = clock.instant();
         ReviewJobExecutionResult result;
         try {
             result = handler.handle(claim);
@@ -68,9 +91,27 @@ public final class ReviewJobWorker {
             case RETRYABLE_FAILURE -> transitionRetryableFailure(claim, result.errorCode(), now);
         };
         if (!transitioned) {
-            LOGGER.debug("Review job transition rejected for stale claim: jobId={}, attempt={}",
-                    claim.id(), claim.attempt());
+            metrics.reviewJob("stale_claim", Duration.between(startedAt, clock.instant()));
+            LOGGER.atDebug().addKeyValue("event", "review_job_stale_claim")
+                    .addKeyValue("review_job_id", claim.id())
+                    .addKeyValue("attempt", claim.attempt())
+                    .log("Review job transition rejected for stale claim");
+            return;
         }
+        String outcome = switch (result.outcome()) {
+            case SUCCESS -> "completed";
+            case TERMINAL_FAILURE -> "failed";
+            case RETRYABLE_FAILURE -> claim.attempt() >= claim.maxAttempts() ? "failed" : "retry";
+        };
+        metrics.reviewJob(outcome, Duration.between(startedAt, clock.instant()));
+        var log = "failed".equals(outcome) ? LOGGER.atError()
+                : "retry".equals(outcome) ? LOGGER.atWarn() : LOGGER.atInfo();
+        log.addKeyValue("event", "review_job_finished")
+                .addKeyValue("review_job_id", claim.id())
+                .addKeyValue("attempt", claim.attempt())
+                .addKeyValue("outcome", outcome)
+                .addKeyValue("safe_error_code", result.errorCode() == null ? "none" : result.errorCode().value())
+                .log("Review job attempt finished");
     }
 
     private boolean transitionRetryableFailure(

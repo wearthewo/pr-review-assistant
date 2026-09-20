@@ -13,6 +13,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.util.unit.DataSize;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.prreviewassistant.observability.ApplicationMetrics;
 
 class GitHubWebhookServiceTest {
 
@@ -107,5 +109,30 @@ class GitHubWebhookServiceTest {
                 .isInstanceOf(GitHubWebhookException.class);
         assertThatThrownBy(() -> service.ingest(body, signature, "delivery\nforged", "ping"))
                 .isInstanceOf(GitHubWebhookException.class);
+    }
+
+    @Test
+    void observesAcceptedDuplicateAndRejectedOutcomesWithoutPayloadTags() {
+        SimpleMeterRegistry registry = new SimpleMeterRegistry();
+        ApplicationMetrics metrics = new ApplicationMetrics(registry);
+        GitHubWebhookAcceptanceService acceptance = new GitHubWebhookAcceptanceService(
+                delivery -> GitHubWebhookStore.StoreResult.DUPLICATE,
+                mock(GitHubWebhookEventProcessor.class));
+        GitHubWebhookService observed = new GitHubWebhookService(
+                new GitHubWebhookSignatureVerifier(
+                        new GitHubWebhookProperties(SECRET, DataSize.ofMegabytes(1))),
+                JsonMapper.builder().build(), acceptance, Clock.fixed(NOW, ZoneOffset.UTC), metrics);
+        byte[] body = "{\"sentinel\":\"MUST_NOT_BE_A_TAG\"}".getBytes(StandardCharsets.UTF_8);
+
+        observed.ingest(body, WebhookTestSupport.sign(SECRET, body), "delivery", "ping");
+        new GitHubWebhookControllerAdvice(metrics).handleWebhookError(GitHubWebhookException.unauthorized());
+
+        assertThat(registry.get(ApplicationMetrics.PREFIX + ".webhook.requests")
+                .tags("outcome", "duplicate", "reason", "none").counter().count()).isEqualTo(1);
+        assertThat(registry.get(ApplicationMetrics.PREFIX + ".webhook.requests")
+                .tags("outcome", "rejected", "reason", "invalid_signature").counter().count())
+                .isEqualTo(1);
+        assertThat(registry.getMeters()).allSatisfy(meter ->
+                assertThat(meter.getId().toString()).doesNotContain("MUST_NOT_BE_A_TAG", "delivery"));
     }
 }
