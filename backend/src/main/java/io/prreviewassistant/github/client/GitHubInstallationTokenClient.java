@@ -1,6 +1,10 @@
 package io.prreviewassistant.github.client;
 
 import java.time.Instant;
+import java.time.Clock;
+import java.time.Duration;
+import io.prreviewassistant.observability.ApplicationMetrics;
+import io.prreviewassistant.observability.ApplicationMetrics.GitHubOperation;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -20,14 +24,42 @@ public final class GitHubInstallationTokenClient implements InstallationTokenReq
 
     private final RestClient restClient;
     private final GitHubAppJwtProvider jwtProvider;
+    private final ApplicationMetrics metrics;
+    private final Clock clock;
 
     public GitHubInstallationTokenClient(RestClient restClient, GitHubAppJwtProvider jwtProvider) {
+        this(restClient, jwtProvider, ApplicationMetrics.noop(), Clock.systemUTC());
+    }
+
+    public GitHubInstallationTokenClient(RestClient restClient, GitHubAppJwtProvider jwtProvider,
+            ApplicationMetrics metrics, Clock clock) {
         this.restClient = restClient;
         this.jwtProvider = jwtProvider;
+        this.metrics = metrics;
+        this.clock = clock;
     }
 
     @Override
     public InstallationAccessToken request(long installationId) {
+        Instant startedAt = clock.instant();
+        try {
+            InstallationAccessToken result = requestToken(installationId);
+            metrics.github(GitHubOperation.INSTALLATION_TOKEN, "success",
+                    Duration.between(startedAt, clock.instant()));
+            return result;
+        } catch (GitHubException exception) {
+            metrics.github(GitHubOperation.INSTALLATION_TOKEN,
+                    exception.type().name().toLowerCase(java.util.Locale.ROOT),
+                    Duration.between(startedAt, clock.instant()));
+            throw exception;
+        } catch (RuntimeException exception) {
+            metrics.github(GitHubOperation.INSTALLATION_TOKEN, "unexpected_failure",
+                    Duration.between(startedAt, clock.instant()));
+            throw exception;
+        }
+    }
+
+    private InstallationAccessToken requestToken(long installationId) {
         if (installationId <= 0) {
             throw GitHubException.invalidInstallationId();
         }

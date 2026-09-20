@@ -25,6 +25,7 @@ public class DashboardSecurityConfiguration {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/api/webhooks/github")
                         .permitAll()
+                        .requestMatchers("/actuator/prometheus").authenticated()
                         .requestMatchers("/api/dashboard/**").authenticated()
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(resourceServer -> resourceServer

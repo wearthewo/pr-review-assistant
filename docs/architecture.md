@@ -2,7 +2,7 @@
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M15. M13G closes the integrated read-only dashboard phase over the existing M13/M14/M15 boundaries; review detail, repository mutation, billing, and later dashboard product operations remain absent.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M16. M13G closes the integrated read-only dashboard phase and M16 instruments the existing boundaries without changing their behavior; review detail, repository mutation, billing, production monitoring infrastructure, and later dashboard product operations remain absent.
 
 ## System context
 
@@ -112,6 +112,10 @@ The Reviews page uses the same server-only and independently reauthorized path t
 ### Infrastructure and delivery
 
 Defines PostgreSQL-only local infrastructure for the backend. It will add CI checks and deployment concerns only when required by a later milestone. Infrastructure does not own product rules. No additional service, CI workflow, or deployment platform choice exists at M4.
+
+### Observability boundary
+
+M16 separates logs, metrics, and health. Stable structured events correlate individual webhook, review-job, and publication workflows using bounded identifiers. Micrometer aggregates only controlled, low-cardinality dimensions and derives queue gauges from indexed PostgreSQL scalar queries at scrape time. Health groups describe process liveness and database-backed readiness; GitHub/OpenAI availability remains an operation metric rather than a restart signal. Instrumentation is best effort and cannot participate in, roll back, or replace authoritative business state. Prometheus export is protected; the monitoring backend and deployment policy remain M20 concerns.
 
 ## Domain and dependency direction
 

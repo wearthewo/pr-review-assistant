@@ -8,6 +8,11 @@ import io.prreviewassistant.review.publication.PublicationPayload;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.Clock;
+import java.time.Duration;
+import java.util.function.Supplier;
+import io.prreviewassistant.observability.ApplicationMetrics;
+import io.prreviewassistant.observability.ApplicationMetrics.GitHubOperation;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.http.HttpHeaders;
@@ -23,10 +28,15 @@ import tools.jackson.databind.node.ObjectNode;
 public final class GitHubReviewClient implements GitHubReviewPublisher {
     private static final ObjectMapper MAPPER=JsonMapper.builder().build();
     private final RestClient client; private final InstallationTokenProvider tokens;
-    public GitHubReviewClient(RestClient client,InstallationTokenProvider tokens){this.client=client;this.tokens=tokens;}
+    private final ApplicationMetrics metrics; private final Clock clock;
+    public GitHubReviewClient(RestClient client,InstallationTokenProvider tokens){this(client,tokens,ApplicationMetrics.noop(),Clock.systemUTC());}
+    public GitHubReviewClient(RestClient client,InstallationTokenProvider tokens,ApplicationMetrics metrics,Clock clock){this.client=client;this.tokens=tokens;this.metrics=metrics;this.clock=clock;}
 
     @Override
     public GitHubPublishedReview create(long installationId,String owner,String repository,int pullNumber,
+            String commitId,PublicationPayload payload,int maxResponseBytes){
+        return observe(GitHubOperation.PUBLISH_REVIEW,()->createRequest(installationId,owner,repository,pullNumber,commitId,payload,maxResponseBytes));}
+    private GitHubPublishedReview createRequest(long installationId,String owner,String repository,int pullNumber,
             String commitId,PublicationPayload payload,int maxResponseBytes){
         InstallationAccessToken token=tokenFor(installationId);
         ObjectNode root=MAPPER.createObjectNode();root.put("commit_id",commitId);root.put("body",payload.body());root.put("event","COMMENT");
@@ -48,6 +58,8 @@ public final class GitHubReviewClient implements GitHubReviewPublisher {
 
     @Override
     public GitHubReviewPage list(long installationId,String owner,String repository,int pullNumber,int page,int maxResponseBytes){
+        return observe(GitHubOperation.RECONCILE_REVIEW,()->listRequest(installationId,owner,repository,pullNumber,page,maxResponseBytes));}
+    private GitHubReviewPage listRequest(long installationId,String owner,String repository,int pullNumber,int page,int maxResponseBytes){
         InstallationAccessToken token=tokenFor(installationId);
         try{return client.get().uri(b->b.pathSegment("repos",owner,repository,"pulls",Integer.toString(pullNumber),"reviews")
                 .queryParam("per_page",100).queryParam("page",page).build())
@@ -56,6 +68,11 @@ public final class GitHubReviewClient implements GitHubReviewPublisher {
                     String body=read(response,maxResponseBytes);return parsePage(body,response.getHeaders().getFirst("Link"));
                 });}catch(GitHubReviewException e){throw e;}catch(RestClientException e){throw GitHubReviewException.of(GitHubReviewErrorType.TRANSIENT);}
     }
+
+    private <T>T observe(GitHubOperation operation,Supplier<T> request){Instant started=clock.instant();try{T result=request.get();
+        metrics.github(operation,"success",Duration.between(started,clock.instant()));return result;
+        }catch(GitHubReviewException e){metrics.github(operation,e.type().name().toLowerCase(java.util.Locale.ROOT),Duration.between(started,clock.instant()));throw e;
+        }catch(RuntimeException e){metrics.github(operation,"unexpected_failure",Duration.between(started,clock.instant()));throw e;}}
 
     private static GitHubPublishedReview parsePublished(String body){try{JsonNode n=MAPPER.readTree(body);
         return new GitHubPublishedReview(positiveId(n.path("id")),Instant.parse(required(n.path("submitted_at"))));

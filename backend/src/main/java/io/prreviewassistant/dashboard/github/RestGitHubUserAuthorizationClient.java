@@ -4,6 +4,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.function.Supplier;
+
+import io.prreviewassistant.observability.ApplicationMetrics;
+import io.prreviewassistant.observability.ApplicationMetrics.GitHubOperation;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -20,16 +27,30 @@ final class RestGitHubUserAuthorizationClient implements GitHubUserAuthorization
     private final RestClient apiClient;
     private final ObjectMapper objectMapper;
     private final GitHubConnectionProperties properties;
+    private final ApplicationMetrics metrics;
+    private final Clock clock;
 
     RestGitHubUserAuthorizationClient(
             RestClient oauthClient,
             RestClient apiClient,
             ObjectMapper objectMapper,
             GitHubConnectionProperties properties) {
+        this(oauthClient, apiClient, objectMapper, properties, ApplicationMetrics.noop(), Clock.systemUTC());
+    }
+
+    RestGitHubUserAuthorizationClient(
+            RestClient oauthClient,
+            RestClient apiClient,
+            ObjectMapper objectMapper,
+            GitHubConnectionProperties properties,
+            ApplicationMetrics metrics,
+            Clock clock) {
         this.oauthClient = oauthClient;
         this.apiClient = apiClient;
         this.objectMapper = objectMapper;
         this.properties = properties;
+        this.metrics = metrics;
+        this.clock = clock;
     }
 
     @Override
@@ -43,6 +64,10 @@ final class RestGitHubUserAuthorizationClient implements GitHubUserAuthorization
     }
 
     private SecretToken exchange(String code, String verifier) {
+        return observe(GitHubOperation.OAUTH_TOKEN, () -> exchangeRequest(code, verifier));
+    }
+
+    private SecretToken exchangeRequest(String code, String verifier) {
         LinkedMultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("client_id", properties.clientId());
         form.add("client_secret", properties.clientSecret());
@@ -62,16 +87,22 @@ final class RestGitHubUserAuthorizationClient implements GitHubUserAuthorization
     }
 
     private long authenticatedUser(SecretToken token) {
-        JsonNode root = parse(read(apiClient.get().uri("/user")
+        return observe(GitHubOperation.OAUTH_USER, () -> {
+            JsonNode root = parse(read(apiClient.get().uri("/user")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value()), properties.maxResponseBytes()));
-        long id = positiveLong(root.get("id"));
-        if (id <= 0) {
-            throw new GitHubConnectionException(GitHubConnectionError.GITHUB_RESPONSE_INVALID);
-        }
-        return id;
+            long id = positiveLong(root.get("id"));
+            if (id <= 0) {
+                throw new GitHubConnectionException(GitHubConnectionError.GITHUB_RESPONSE_INVALID);
+            }
+            return id;
+        });
     }
 
     private List<GitHubConnectionProof.AccessibleInstallation> installations(SecretToken token) {
+        return observe(GitHubOperation.OAUTH_INSTALLATIONS, () -> installationPages(token));
+    }
+
+    private List<GitHubConnectionProof.AccessibleInstallation> installationPages(SecretToken token) {
         List<GitHubConnectionProof.AccessibleInstallation> result = new ArrayList<>();
         boolean hasNext = true;
         for (int page = 1; page <= properties.maxPages() && hasNext; page++) {
@@ -106,6 +137,22 @@ final class RestGitHubUserAuthorizationClient implements GitHubUserAuthorization
             }
         }
         return List.copyOf(result);
+    }
+
+    private <T> T observe(GitHubOperation operation, Supplier<T> request) {
+        Instant startedAt = clock.instant();
+        try {
+            T result = request.get();
+            metrics.github(operation, "success", Duration.between(startedAt, clock.instant()));
+            return result;
+        } catch (GitHubConnectionException exception) {
+            metrics.github(operation, exception.error().name().toLowerCase(java.util.Locale.ROOT),
+                    Duration.between(startedAt, clock.instant()));
+            throw exception;
+        } catch (RuntimeException exception) {
+            metrics.github(operation, "unexpected_failure", Duration.between(startedAt, clock.instant()));
+            throw exception;
+        }
     }
 
     private Page readPage(RestClient.RequestHeadersSpec<?> request) {

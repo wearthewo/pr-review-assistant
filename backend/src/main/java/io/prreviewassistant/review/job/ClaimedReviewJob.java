@@ -13,7 +13,8 @@ public record ClaimedReviewJob(
         Instant claimedAt,
         Instant claimExpiresAt,
         ReviewTarget reviewTarget,
-        TenantContext tenantContext) {
+        TenantContext tenantContext,
+        boolean recoveredLease) {
 
     public ClaimedReviewJob {
         Objects.requireNonNull(id, "id must not be null");
@@ -27,7 +28,14 @@ public record ClaimedReviewJob(
 
     public ClaimedReviewJob(UUID id, UUID claimToken, int attempt, int maxAttempts,
             Instant claimedAt, Instant claimExpiresAt, ReviewTarget reviewTarget) {
-        this(id, claimToken, attempt, maxAttempts, claimedAt, claimExpiresAt, reviewTarget, null);
+        this(id, claimToken, attempt, maxAttempts, claimedAt, claimExpiresAt, reviewTarget, null, false);
+    }
+
+    public ClaimedReviewJob(UUID id, UUID claimToken, int attempt, int maxAttempts,
+            Instant claimedAt, Instant claimExpiresAt, ReviewTarget reviewTarget,
+            TenantContext tenantContext) {
+        this(id, claimToken, attempt, maxAttempts, claimedAt, claimExpiresAt,
+                reviewTarget, tenantContext, false);
     }
 
     public ClaimedReviewJob(
@@ -37,7 +45,7 @@ public record ClaimedReviewJob(
             int maxAttempts,
             Instant claimedAt,
             Instant claimExpiresAt) {
-        this(id, claimToken, attempt, maxAttempts, claimedAt, claimExpiresAt, null, null);
+        this(id, claimToken, attempt, maxAttempts, claimedAt, claimExpiresAt, null, null, false);
     }
 
     @Override
