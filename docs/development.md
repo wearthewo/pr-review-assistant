@@ -2,7 +2,7 @@
 
 ## Current state
 
-The backend is complete through M16. M13G closes integration and browser security testing for the Node.js 24 LTS / Next.js 16.3.5 read-only dashboard; M16 adds application instrumentation without an external monitoring stack. It contains no review detail/retry, repository mutation, settings feature, quota mutation, organization ownership flow, billing, CI/CD workflow, or deployment definition.
+The application is complete through M17. M13G closes integration and browser security testing for the Node.js 24 LTS / Next.js 16.3.5 read-only dashboard; M16 adds application instrumentation without an external monitoring stack; M17 adds the focused hardening and audit documented in `security-hardening.md`. It contains no review detail/retry, repository mutation, settings feature, quota mutation, organization ownership flow, billing, CI/CD workflow, or deployment definition.
 
 ## Prerequisites
 
@@ -130,7 +130,7 @@ PR/repository metadata responses have a separate fixed 512 KiB bound. A missing 
 
 ## Database evolution
 
-Flyway is enabled and is the sole schema migration mechanism. V1 creates `github_webhook_deliveries`; V2 creates the leased `review_jobs` queue; V3 adds the exact GitHub review target and its same-revision uniqueness guard; V4 adds immutable publication records and the separate leased publication queue; V5 creates tenant, installation, and repository ownership and adds tenant associations to jobs/publications; V6 creates tenant usage accounting and its same-tenant job constraint. Earlier migrations are unchanged. Integration tests run the full chain against PostgreSQL 18.6 through Testcontainers and verify populated V5 state upgrades without fabricated usage.
+Flyway is enabled and is the sole schema migration mechanism. V1 creates `github_webhook_deliveries`; V2 creates the leased `review_jobs` queue; V3 adds the exact GitHub review target and its same-revision uniqueness guard; V4 adds immutable publication records and the separate leased publication queue; V5 creates tenant, installation, and repository ownership and adds tenant associations to jobs/publications; V6 creates tenant usage accounting and its same-tenant job constraint; V7 adds application users and memberships; V8 adds temporary hashed GitHub connection state; V9 adds the partial index supporting bounded active-state pruning. Earlier migrations are unchanged. Integration tests run the full chain against PostgreSQL 18.6 through Testcontainers and verify populated historical upgrades.
 
 M14 uses controlled lazy provisioning because no user-authenticated installation lifecycle exists yet. After signature and payload validation, a reviewable webhook supplies authoritative numeric installation/repository IDs. The internal service obtains transaction-scoped advisory locks, resolves or creates the installation's tenant and repository mapping, then creates the tenant-associated job inside the same acceptance transaction. Concurrent first use converges on one mapping. Repository owner/name is never consulted, so rename has no ownership effect; unexpected transfer/reassignment fails closed until an authenticated reconciliation workflow is designed.
 
@@ -175,6 +175,12 @@ The fixed deterministic pipeline assigns the first failed gate as the one aggreg
 GitHub review writes require the GitHub App repository permission `Pull requests: write`. `REVIEW_PUBLICATION_ENABLED` defaults to `false`. Non-empty validated output is still handed off durably while disabled; only the scheduler and GitHub write are withheld, so later enablement cannot require another AI call. Summary, comment, encoded-payload, reconciliation-page, attempt, backoff, polling, batch, and lease limits use the `REVIEW_PUBLICATION_*` variables in `.env.example`. Enabling analysis alone does not enable GitHub writes.
 
 The publisher sends one `COMMENT` review with `commit_id` equal to the immutable job SHA. Single-line comments use `line` and `side=RIGHT`; multiline comments also use `start_line` and `start_side=RIGHT`. Do not use deprecated diff `position`. File-level findings are summary items. A local or automated test must use the mock GitHub server; a real smoke test is optional and must use explicitly supplied GitHub App credentials.
+
+## M17 security verification
+
+Run the full backend, frontend, browser, dependency, and source-scan gates in `docs/security-hardening.md` before treating an Internet-facing change as complete. OAuth state issuance is intentionally bounded by `GITHUB_OAUTH_MAX_ACTIVE_STATES_PER_USER` (default 5, valid 1-20). Raising it increases temporary durable state and should require measured need. GitHub App PEM files are capped at 64 KiB and should remain mounted read-only with operating-system permissions restricted to the backend identity.
+
+Deployment should use separate migration and runtime database roles when M20 introduces production credentials: Flyway needs DDL/schema-history authority, while runtime requires only schema use and application-table CRUD. Do not grant superuser or database-owner privileges to the runtime process.
 
 ## Troubleshooting and completion
 

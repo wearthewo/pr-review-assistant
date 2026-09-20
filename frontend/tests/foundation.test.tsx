@@ -39,6 +39,7 @@ import {
   connectionMessage,
   dashboardPathForConnectionResult,
   isTrustedMutationRequest,
+  parseGitHubCallback,
   validateCallbackValue,
   validateGitHubAuthorizationUrl,
 } from "@/lib/github-connection-core";
@@ -237,6 +238,20 @@ test("connection results render bounded status without IDs or secrets", () => {
     applicationUserId: USER_ID, memberships: [], onboardingRequired: true }} connectionMessage={message} />);
   assert.match(html, /No eligible installation found/);
   assert.doesNotMatch(html, /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|server-only-access-token/i);
+});
+
+test("GitHub callback rejects parameter pollution and provider errors", () => {
+  assert.deepEqual(parseGitHubCallback(new URLSearchParams("code=one&state=two")),
+    { code: "one", state: "two" });
+  for (const query of [
+    "code=one&code=two&state=three",
+    "code=one&state=two&state=three",
+    "code=one&state=two&error=access_denied",
+    "code=one",
+    "state=two",
+  ]) {
+    assert.throws(() => parseGitHubCallback(new URLSearchParams(query)), /invalid/);
+  }
 });
 
 test("one authorized membership renders the tenant shell and backend role", () => {

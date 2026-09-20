@@ -55,7 +55,7 @@ class GitHubOwnershipBootstrapPersistenceIntegrationTest {
         ApplicationUser other = user("other");
         String hash = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
                 .digest("raw-secret-state".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-        states.create(hash, first.id(), "v".repeat(43), NOW.plusSeconds(60), NOW);
+        states.create(hash, first.id(), "v".repeat(43), NOW.plusSeconds(60), NOW, 5);
         assertThat(jdbc.sql("SELECT state_hash FROM github_connection_states").query(String.class).single().trim())
                 .isEqualTo(hash).doesNotContain("raw-secret-state");
         assertThat(jdbc.sql("""
@@ -83,6 +83,34 @@ class GitHubOwnershipBootstrapPersistenceIntegrationTest {
         assertThat(bootstrap.bindOwner(context.tenantId(), other.id(), NOW.plusSeconds(2)))
                 .isEqualTo(GitHubOwnershipBootstrapStore.MembershipBindingResult.OWNERSHIP_CONFLICT);
         assertThat(jdbc.sql("SELECT count(*) FROM tenant_memberships").query(Long.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentStateCreationKeepsOnlyConfiguredActiveStatesPerUser() throws Exception {
+        ApplicationUser user = user("state-flood-target");
+        int callers = 12;
+        CountDownLatch ready = new CountDownLatch(callers);
+        CountDownLatch go = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(callers)) {
+            var futures = java.util.stream.IntStream.range(0, callers).mapToObj(index -> executor.submit(() -> {
+                ready.countDown();
+                go.await();
+                states.create("%064x".formatted(index + 1), user.id(), "v".repeat(43),
+                        NOW.plusSeconds(600), NOW.plusMillis(index), 5);
+                return null;
+            })).toList();
+            ready.await();
+            go.countDown();
+            for (var future : futures) {
+                future.get();
+            }
+        }
+
+        assertThat(jdbc.sql("""
+                SELECT count(*) FROM github_connection_states
+                WHERE application_user_id = :userId AND consumed_at IS NULL AND expires_at > :now
+                """).param("userId", user.id()).param("now", NOW.atOffset(java.time.ZoneOffset.UTC))
+                .query(Long.class).single()).isEqualTo(5);
     }
 
     @Test

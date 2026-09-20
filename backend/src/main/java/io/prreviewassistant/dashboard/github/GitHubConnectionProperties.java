@@ -12,6 +12,7 @@ public record GitHubConnectionProperties(
         URI callbackUrl,
         URI oauthBaseUrl,
         Duration stateTtl,
+        int maxActiveStatesPerUser,
         int maxPages,
         int maxInstallations,
         int maxResponseBytes) {
@@ -30,6 +31,7 @@ public record GitHubConnectionProperties(
             validateUri(callbackUrl, true);
         }
         if (stateTtl.isZero() || stateTtl.isNegative() || stateTtl.compareTo(Duration.ofMinutes(30)) > 0
+                || maxActiveStatesPerUser < 1 || maxActiveStatesPerUser > 20
                 || maxPages < 1 || maxPages > 20 || maxInstallations < 1 || maxInstallations > 2000
                 || maxResponseBytes < 1024 || maxResponseBytes > 1024 * 1024) {
             throw new IllegalArgumentException("GitHub connection configuration is invalid");

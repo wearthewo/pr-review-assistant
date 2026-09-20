@@ -101,6 +101,11 @@ class ObservabilityPersistenceIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(org.hamcrest.Matchers.containsString(
                         "pr_review_assistant_queue_depth")));
+        for (String sensitive : java.util.List.of("env", "configprops", "beans", "mappings", "heapdump",
+                "threaddump", "loggers", "conditions", "scheduledtasks", "metrics")) {
+            mockMvc.perform(get("/actuator/" + sensitive).with(jwt()))
+                    .andExpect(status().isForbidden());
+        }
     }
 
     private void assertGauge(String state, double expected) {

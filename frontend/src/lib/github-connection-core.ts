@@ -32,6 +32,15 @@ export function validateCallbackValue(value: string | null): string {
   return value;
 }
 
+export function parseGitHubCallback(searchParams: URLSearchParams): { code: string; state: string } {
+  const codes = searchParams.getAll("code");
+  const states = searchParams.getAll("state");
+  if (codes.length !== 1 || states.length !== 1 || searchParams.has("error")) {
+    throw new Error("GitHub callback input is invalid");
+  }
+  return { code: validateCallbackValue(codes[0]), state: validateCallbackValue(states[0]) };
+}
+
 export function dashboardPathForConnectionResult(result: unknown): string {
   return typeof result === "string" ? RESULT_PATHS.get(result) ?? "/dashboard?connection=failed"
     : "/dashboard?connection=failed";

@@ -12,6 +12,7 @@ public final class GitHubReviewRenderer {
 
     private static final Pattern HTML = Pattern.compile("(?s)<!--.*?-->|<[^>]*>");
     private static final Pattern MENTION = Pattern.compile("(?<![\\w`])@(?=[A-Za-z0-9])");
+    private static final Pattern BIDI_CONTROLS = Pattern.compile("[\\u061C\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069]");
     private static final Pattern ACTIVE_LINE_PREFIX = Pattern.compile("^(\\s*)(#|>|[-*]\\s+\\[)");
     private static final Pattern EXCESS_BLANK_LINES = Pattern.compile("\\n{3,}");
 
@@ -89,6 +90,7 @@ public final class GitHubReviewRenderer {
 
     static String sanitize(String value) {
         String clean = value.replaceAll("[\\p{Cc}&&[^\\n\\t]]", " ");
+        clean = BIDI_CONTROLS.matcher(clean).replaceAll(" ");
         clean = HTML.matcher(clean).replaceAll(" ");
         clean = clean.replace("```", "` ` `").replace("](", "] (");
         clean = MENTION.matcher(clean).replaceAll("@\u200B");
