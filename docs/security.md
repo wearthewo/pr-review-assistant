@@ -226,7 +226,9 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 
 - Minimize dependencies and use supported, pinned or constrained versions through ecosystem lock and build files when those files are introduced.
 - Review provenance, maintenance, license, and transitive risk before adding a dependency.
-- Pin CI actions to immutable revisions under a documented update process; give workflows minimal token permissions and protect release credentials.
+- M19 uses only current GitHub-maintained action release commits pinned by full SHA under a documented review/update process, restricts workflow permissions to read-only contents, disables persisted checkout credentials, and has no release credentials.
+- CI installs Maven through the checksum-pinned repository wrapper, Node 24 through the official setup action, the declared npm 11.19.1 tool, and frontend dependencies through `npm ci`; production and full npm audits are blocking.
+- Dependency caches are lock/descriptor keyed and contain no compiled application output. No workflow publishes application artifacts, images, packages, or deployments.
 - Run dependency, secret, static, and artifact scanning appropriate to the implementation, and address findings according to risk.
 - Build from reproducible definitions, produce an inventory of shipped components when delivery begins, and keep build and runtime identities separate.
 - Do not run untrusted pull request code in privileged CI contexts or expose secrets to workflows triggered from forks.

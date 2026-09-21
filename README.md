@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. M18 proves and hardens end-to-end asynchronous recovery, including an atomic durable AI-analysis checkpoint; deployment infrastructure, review details, settings, billing, and repository mutation remain unimplemented.
+> Project status: **pre-alpha**. M19 adds reproducible GitHub Actions verification for the accepted M0-M18 system; deployment infrastructure, review details, settings, billing, and repository mutation remain unimplemented.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -66,6 +66,7 @@ Root policy and contributor files apply across the monorepo. Directory READMEs d
 - [Threat model](docs/threat-model.md)
 - [Testing strategy](docs/testing-strategy.md)
 - [Development guide](docs/development.md)
+- [Continuous integration](docs/ci-cd.md)
 - [Observability](docs/observability.md)
 - [M17 security hardening review](docs/security-hardening.md)
 - [Workflow reliability](docs/reliability.md)
@@ -88,6 +89,8 @@ On Windows PowerShell, use `Copy-Item .env.example .env` and run `mvnw.cmd` from
 After startup, public health, liveness, and readiness endpoints are under `http://localhost:8080/actuator/health`; Prometheus-format metrics at `/actuator/prometheus` require authentication. `POST http://localhost:8080/api/webhooks/github` is the GitHub boundary and authenticates requests with `X-Hub-Signature-256`. See [docs/development.md](docs/development.md) and [docs/observability.md](docs/observability.md) for configuration, inspection, test, and shutdown commands.
 
 ## Current milestone
+
+M19 establishes the repository's build-verification contract. GitHub Actions runs independent `Backend`, `Frontend`, and `E2E` Linux jobs for pull requests to `main`, pushes to `main`, and manual diagnostics. The workflow uses Java 21 plus the checksum-pinned Maven Wrapper, Node 24/npm 11 plus the committed lockfile, PostgreSQL 18.6 Testcontainers, blocking dependency audits, and failure-only bounded Playwright diagnostics. It has read-only repository permissions, receives no product secrets, and performs no deployment or artifact publication. See [docs/ci-cd.md](docs/ci-cd.md).
 
 M18 verifies the signed-webhook-to-publication workflow against the real PostgreSQL queue, ownership, accounting, checkpoint, and publication stores while replacing only external GitHub and AI calls with deterministic boundaries. Flyway V10 adds a tenant-bound, one-per-job provider-neutral analysis checkpoint. Validated candidates and `RESERVED -> CONSUMED` usage now commit atomically; retries load the checkpoint before AI, so a crash after that commit cannot cause a second AI invocation. Empty analyses are checkpointed as well. Historical consumed rows without a checkpoint fail closed because their result cannot be reconstructed. See [docs/reliability.md](docs/reliability.md).
 

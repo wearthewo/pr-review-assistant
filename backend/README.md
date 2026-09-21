@@ -45,6 +45,8 @@ Check process liveness at `http://localhost:8080/actuator/health/liveness` and d
 
 On Windows, run `.\mvnw.cmd clean verify`. Integration tests start their own pinned PostgreSQL container and do not use the local Compose database.
 
+M19 runs this same command on GitHub-hosted Linux with Docker-backed PostgreSQL 18.6 Testcontainers, followed by `./mvnw dependency:tree`. The Unix wrapper is tracked executable and both wrapper downloads are checksum-pinned. CI does not start the development Compose database or use a shared database.
+
 Flyway owns schema changes. V1-V7 retain their accepted responsibilities; V8 adds only short-lived `github_connection_states` with hashed state, application-user binding, PKCE verifier, expiry, and atomic consumption metadata. V9 adds the partial per-user active-state index used by bounded pruning. V10 adds `review_analysis_checkpoints`, with one bounded provider-neutral candidate payload per review job and a composite tenant-ownership foreign key. Earlier migrations remain immutable. Hibernate uses `ddl-auto: validate` and never creates or updates the schema.
 
 Validated analysis candidates are checkpointed in the same PostgreSQL transaction that consumes the matching usage reservation. Review retries read this checkpoint before quota reservation or AI, rerun deterministic suppression, and resume publication/completion. Publication continues from its separate durable payload and never calls AI. See `docs/reliability.md` for state machines, transaction boundaries, and remaining external-provider ambiguity.

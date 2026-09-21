@@ -23,7 +23,30 @@ If a proposed change conflicts with an ADR, write a superseding ADR for review. 
 
 ## Verification and pull request notes
 
-Run the relevant test, lint, format, build, contract, and security checks for the areas changed. A pull request description must include:
+Run the relevant test, lint, format, build, contract, and security checks for the areas changed.
+
+For a change that can affect the integrated build, reproduce the M19 gates locally:
+
+```sh
+cd backend
+./mvnw clean verify
+./mvnw dependency:tree
+
+cd ../frontend
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run test:e2e
+npm audit --omit=dev
+npm audit
+npm ls --depth=0
+```
+
+Use Java 21, Node 24, the Maven Wrapper, and the committed npm lockfile. Windows contributors use `mvnw.cmd`. The production frontend build requires safe local configuration described in `.env.example`; never put real credentials in a pull-request workflow. See [docs/ci-cd.md](docs/ci-cd.md) for the exact CI contract and troubleshooting guidance.
+
+A pull request description must include:
 
 - the exact scope of the change;
 - the reason for the change;

@@ -4,7 +4,7 @@ For M18 workflow recovery, start with [reliability.md](reliability.md). Flyway V
 
 ## Current state
 
-The application is complete through M18. M13G closes integration and browser security testing for the Node.js 24 LTS / Next.js 16.3.5 read-only dashboard; M16 adds application instrumentation without an external monitoring stack; M17 adds the focused hardening and audit documented in `security-hardening.md`; M18 adds the durable analysis checkpoint and end-to-end reliability verification documented in `reliability.md`. It contains no review detail/retry, repository mutation, settings feature, quota mutation, organization ownership flow, billing, CI/CD workflow, or deployment definition.
+The application runtime is complete through M18. M13G closes integration and browser security testing for the Node.js 24 LTS / Next.js 16.3.5 read-only dashboard; M16 adds application instrumentation without an external monitoring stack; M17 adds the focused hardening and audit documented in `security-hardening.md`; M18 adds the durable analysis checkpoint and end-to-end reliability verification documented in `reliability.md`. M19 adds the build-only GitHub Actions contract documented in `ci-cd.md`. It contains no review detail/retry, repository mutation, settings feature, quota mutation, organization ownership flow, billing, deployment definition, or release pipeline.
 
 ## Prerequisites
 
@@ -82,6 +82,8 @@ From `backend`:
 ```
 
 On Windows, use `.\mvnw.cmd clean verify`. The test suite starts a pinned PostgreSQL Testcontainer, connects Spring to it, runs Flyway, validates the empty schema through Hibernate, and shuts the container down through the normal Testcontainers lifecycle. It does not require the Compose service to be running.
+
+The same commands run on GitHub-hosted Linux in three independent M19 jobs. Backend verification uses Docker-backed PostgreSQL 18.6 Testcontainers; frontend verification uses the committed lockfile; E2E installs only Chromium. See [ci-cd.md](ci-cd.md) for trigger, cache, timeout, placeholder-environment, and failure-diagnostic details.
 
 ## Configuration principles
 
