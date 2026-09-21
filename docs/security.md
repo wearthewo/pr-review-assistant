@@ -1,5 +1,11 @@
 # Security Principles
 
+## Durable analysis checkpoint
+
+M18 persists only bounded, provider-neutral validated candidate findings needed for deterministic recovery. It does not persist prompts, raw provider responses, source, patches, repository context, credentials, authorization material, or provider-specific envelopes. The payload is capped at ten findings and 256 KiB, decoded without polymorphism, and revalidated through domain constructors. It is not exposed by a public API and is never logged or used as metric labels.
+
+Checkpoint lookup and creation require the authorized tenant and review job. PostgreSQL enforces the same job/tenant/repository ownership triple used by accounting. The checkpoint and `RESERVED -> CONSUMED` transition are atomic. A checkpoint without matching consumed usage, cross-tenant access, malformed payload, or historical consumed usage without a reconstructable checkpoint fails closed. See [reliability.md](reliability.md).
+
 ## Security posture
 
 The system processes private source code and acts through GitHub installation permissions in a multi-tenant environment. It therefore assumes that inbound content, external services, model output, and tenant users can fail or be malicious. Controls use least privilege, explicit tenant context, bounded processing, defense in depth, and auditable state transitions.

@@ -22,6 +22,9 @@ import io.prreviewassistant.ai.AiProviderException;
 import io.prreviewassistant.review.analysis.ReviewAnalysisException;
 import io.prreviewassistant.review.analysis.FindingSuppressionEngine;
 import io.prreviewassistant.review.analysis.ReviewAnalysis;
+import io.prreviewassistant.review.analysis.ReviewAnalysisCheckpointResult;
+import io.prreviewassistant.review.analysis.ReviewAnalysisCheckpointService;
+import io.prreviewassistant.review.analysis.ReviewCandidateAnalysis;
 import io.prreviewassistant.review.analysis.ReviewEngine;
 import io.prreviewassistant.review.analysis.SuppressionSummary;
 import io.prreviewassistant.review.analysis.ValidatedReview;
@@ -45,6 +48,10 @@ import io.prreviewassistant.github.client.GitHubReviewErrorType;
 import io.prreviewassistant.github.client.GitHubReviewPage;
 import io.prreviewassistant.github.client.GitHubReviewPublisher;
 import io.prreviewassistant.tenant.TenantContext;
+import io.prreviewassistant.usage.QuotaDecision;
+import io.prreviewassistant.usage.UsageAccountingService;
+import io.prreviewassistant.usage.UsagePeriod;
+import io.prreviewassistant.usage.UsageReservationResult;
 
 class PullRequestRetrievalJobHandlerTest {
 
@@ -144,7 +151,8 @@ class PullRequestRetrievalJobHandlerTest {
         verify(loader, org.mockito.Mockito.never()).load(org.mockito.ArgumentMatchers.any());
         verify(engine, org.mockito.Mockito.never()).analyze(org.mockito.ArgumentMatchers.any());
         verify(suppression, org.mockito.Mockito.never()).validate(
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+                org.mockito.ArgumentMatchers.any(ReviewAnalysis.class),
+                org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -236,6 +244,142 @@ class PullRequestRetrievalJobHandlerTest {
                 org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyInt(),
                 org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
+    void checkpointRecoveryWithZeroFindingsSkipsAiAndPublication() {
+        Fixture fixture = fixtureWithEngine();
+        ReviewCandidateAnalysis checkpoint = new ReviewCandidateAnalysis(TARGET, List.of());
+        ReviewAnalysisCheckpointService checkpoints = mock(ReviewAnalysisCheckpointService.class);
+        PublicationHandoffService handoff = mock(PublicationHandoffService.class);
+        UsageAccountingService usage = mock(UsageAccountingService.class);
+        ClaimedReviewJob claim = claim(TARGET);
+        when(checkpoints.find(TENANT_CONTEXT, claim.id())).thenReturn(Optional.of(checkpoint));
+        ValidatedReview validated = mock(ValidatedReview.class);
+        when(validated.findings()).thenReturn(List.of());
+        when(fixture.suppressionEngine().validate(checkpoint, fixture.context())).thenReturn(validated);
+        PullRequestRetrievalJobHandler handler = new PullRequestRetrievalJobHandler(
+                mockLoaderFor(fixture.context().pullRequest()), mockContextBuilderFor(fixture.context()),
+                fixture.engine(), fixture.suppressionEngine(), handoff, null, usage, checkpoints);
+
+        assertThat(handler.handle(claim).outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.SUCCESS);
+        verify(fixture.engine(), org.mockito.Mockito.never()).analyze(fixture.context());
+        verify(usage, org.mockito.Mockito.never()).reserve(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+        verify(handoff, org.mockito.Mockito.never()).handoff(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void checkpointRecoveryWithPublishableFindingsSkipsAiAndCreatesHandoff() {
+        Fixture fixture = fixtureWithEngine();
+        ReviewCandidateAnalysis checkpoint = new ReviewCandidateAnalysis(
+                TARGET, List.of(mock(io.prreviewassistant.review.analysis.ReviewFinding.class)));
+        ReviewAnalysisCheckpointService checkpoints = mock(ReviewAnalysisCheckpointService.class);
+        PublicationHandoffService handoff = mock(PublicationHandoffService.class);
+        ClaimedReviewJob claim = claim(TARGET);
+        when(checkpoints.find(TENANT_CONTEXT, claim.id())).thenReturn(Optional.of(checkpoint));
+        ValidatedReview validated = mock(ValidatedReview.class);
+        when(validated.findings()).thenReturn(checkpoint.findings());
+        when(fixture.suppressionEngine().validate(checkpoint, fixture.context())).thenReturn(validated);
+        PullRequestRetrievalJobHandler handler = new PullRequestRetrievalJobHandler(
+                mockLoaderFor(fixture.context().pullRequest()), mockContextBuilderFor(fixture.context()),
+                fixture.engine(), fixture.suppressionEngine(), handoff, null,
+                mock(UsageAccountingService.class), checkpoints);
+
+        assertThat(handler.handle(claim).outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.SUCCESS);
+        verify(fixture.engine(), org.mockito.Mockito.never()).analyze(fixture.context());
+        verify(handoff).handoff(claim.id(), TENANT_CONTEXT, validated, fixture.context().pullRequest());
+    }
+
+    @Test
+    void failureAfterCheckpointBeforeHandoffRecoversWithoutSecondAiCall() {
+        Fixture fixture = fixtureWithEngine();
+        ReviewCandidateAnalysis candidates = new ReviewCandidateAnalysis(
+                TARGET, List.of(mock(io.prreviewassistant.review.analysis.ReviewFinding.class)));
+        when(fixture.analysis().candidates()).thenReturn(candidates);
+        ReviewAnalysisCheckpointService checkpoints = mock(ReviewAnalysisCheckpointService.class);
+        UsageAccountingService usage = mock(UsageAccountingService.class);
+        PublicationHandoffService handoff = mock(PublicationHandoffService.class);
+        ClaimedReviewJob first = claim(TARGET);
+        ClaimedReviewJob retry = new ClaimedReviewJob(first.id(), UUID.randomUUID(), 2, 3,
+                first.claimedAt().plusSeconds(61), first.claimExpiresAt().plusSeconds(61), TARGET, TENANT_CONTEXT);
+        when(checkpoints.find(TENANT_CONTEXT, first.id()))
+                .thenReturn(Optional.empty(), Optional.of(candidates));
+        when(usage.reserve(TENANT_CONTEXT, first.id())).thenReturn(acquiredReservation());
+        when(checkpoints.createAndConsume(TENANT_CONTEXT, first.id(), candidates, fixture.analysis().metadata()))
+                .thenReturn(ReviewAnalysisCheckpointResult.CREATED);
+        ValidatedReview validated = mock(ValidatedReview.class);
+        when(validated.findings()).thenReturn(candidates.findings());
+        when(fixture.suppressionEngine().validate(fixture.analysis(), fixture.context())).thenReturn(validated);
+        when(fixture.suppressionEngine().validate(candidates, fixture.context())).thenReturn(validated);
+        when(handoff.handoff(first.id(), TENANT_CONTEXT, validated, fixture.context().pullRequest()))
+                .thenThrow(new IllegalStateException("simulated process loss"))
+                .thenReturn(PublicationHandoffResult.CREATED);
+        PullRequestRetrievalJobHandler handler = new PullRequestRetrievalJobHandler(
+                mockLoaderFor(fixture.context().pullRequest()), mockContextBuilderFor(fixture.context()),
+                fixture.engine(), fixture.suppressionEngine(), handoff, null, usage, checkpoints);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> handler.handle(first))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(handler.handle(retry).outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.SUCCESS);
+        verify(fixture.engine(), org.mockito.Mockito.times(1)).analyze(fixture.context());
+        verify(checkpoints, org.mockito.Mockito.times(1)).createAndConsume(
+                TENANT_CONTEXT, first.id(), candidates, fixture.analysis().metadata());
+        verify(handoff, org.mockito.Mockito.times(2)).handoff(
+                first.id(), TENANT_CONTEXT, validated, fixture.context().pullRequest());
+    }
+
+    @Test
+    void historicalConsumedUsageWithoutCheckpointFailsClosedWithoutAi() {
+        Fixture fixture = fixtureWithEngine();
+        ReviewAnalysisCheckpointService checkpoints = mock(ReviewAnalysisCheckpointService.class);
+        UsageAccountingService usage = mock(UsageAccountingService.class);
+        ClaimedReviewJob claim = claim(TARGET);
+        when(checkpoints.find(TENANT_CONTEXT, claim.id())).thenReturn(Optional.empty());
+        when(usage.reserve(TENANT_CONTEXT, claim.id())).thenReturn(new UsageReservationResult(
+                UsageReservationResult.Outcome.EXISTING_CONSUMED,
+                new QuotaDecision(true, 10, 1, 9, UsagePeriod.utcMonthContaining(claim.claimedAt()),
+                        QuotaDecision.Reason.AVAILABLE)));
+        PullRequestRetrievalJobHandler handler = new PullRequestRetrievalJobHandler(
+                mockLoaderFor(fixture.context().pullRequest()), mockContextBuilderFor(fixture.context()),
+                fixture.engine(), fixture.suppressionEngine(), mock(PublicationHandoffService.class),
+                null, usage, checkpoints);
+
+        ReviewJobExecutionResult result = handler.handle(claim);
+
+        assertThat(result.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE);
+        assertThat(result.errorCode().value()).isEqualTo("USAGE_ANALYSIS_RESULT_UNAVAILABLE");
+        verify(fixture.engine(), org.mockito.Mockito.never()).analyze(fixture.context());
+    }
+
+    @Test
+    void invalidProviderOutputNeverConsumesUsageWithoutCheckpoint() {
+        Fixture fixture = fixtureWithEngine();
+        ReviewAnalysisCheckpointService checkpoints = mock(ReviewAnalysisCheckpointService.class);
+        UsageAccountingService usage = mock(UsageAccountingService.class);
+        ClaimedReviewJob claim = claim(TARGET);
+        var metadata = fixture.analysis().metadata();
+        when(checkpoints.find(TENANT_CONTEXT, claim.id())).thenReturn(Optional.empty());
+        when(usage.reserve(TENANT_CONTEXT, claim.id())).thenReturn(acquiredReservation());
+        when(fixture.engine().analyze(fixture.context()))
+                .thenThrow(new ReviewAnalysisException(metadata));
+        PullRequestRetrievalJobHandler handler = new PullRequestRetrievalJobHandler(
+                mockLoaderFor(fixture.context().pullRequest()), mockContextBuilderFor(fixture.context()),
+                fixture.engine(), fixture.suppressionEngine(), mock(PublicationHandoffService.class),
+                null, usage, checkpoints);
+
+        ReviewJobExecutionResult result = handler.handle(claim);
+
+        assertThat(result.outcome()).isEqualTo(ReviewJobExecutionResult.Outcome.TERMINAL_FAILURE);
+        assertThat(result.errorCode().value()).isEqualTo("AI_INVALID_OUTPUT");
+        verify(usage, org.mockito.Mockito.never()).consume(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any());
+        verify(checkpoints, org.mockito.Mockito.never()).createAndConsume(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 
     @ParameterizedTest
@@ -374,5 +518,12 @@ class PullRequestRetrievalJobHandlerTest {
         return new ClaimedReviewJob(
                 UUID.randomUUID(), UUID.randomUUID(), 1, 3, now, now.plusSeconds(60), target,
                 target == null ? null : TENANT_CONTEXT);
+    }
+
+    private UsageReservationResult acquiredReservation() {
+        Instant now = Instant.parse("2026-09-06T12:00:00Z");
+        return new UsageReservationResult(UsageReservationResult.Outcome.ACQUIRED,
+                new QuotaDecision(true, 10, 0, 10, UsagePeriod.utcMonthContaining(now),
+                        QuotaDecision.Reason.AVAILABLE));
     }
 }

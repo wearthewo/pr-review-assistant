@@ -1,6 +1,6 @@
 # Backend
 
-This directory contains the Java 21 and Spring Boot 4.1.1 backend. In addition to the review pipeline and authenticated ownership boundary, it provides bounded read-only tenant repository, review-history, and current-period quota APIs. M16 instruments those boundaries with structured logs, low-cardinality Micrometer metrics, PostgreSQL queue gauges, and liveness/readiness endpoints. M17 adds focused application hardening and the reviewed limit inventory in `docs/security-hardening.md`. It contains no repository mutation, review detail, billing, quota mutation, tenant-management dashboard API, or external monitoring stack.
+This directory contains the Java 21 and Spring Boot 4.1.1 backend. In addition to the review pipeline and authenticated ownership boundary, it provides bounded read-only tenant repository, review-history, and current-period quota APIs. M16 instruments those boundaries with structured logs, low-cardinality Micrometer metrics, PostgreSQL queue gauges, and liveness/readiness endpoints. M17 adds focused application hardening. M18 adds a durable provider-neutral analysis checkpoint and end-to-end recovery verification. It contains no repository mutation, review detail, billing, quota mutation, tenant-management dashboard API, or external monitoring stack.
 
 ## Requirements
 
@@ -45,7 +45,9 @@ Check process liveness at `http://localhost:8080/actuator/health/liveness` and d
 
 On Windows, run `.\mvnw.cmd clean verify`. Integration tests start their own pinned PostgreSQL container and do not use the local Compose database.
 
-Flyway owns schema changes. V1-V7 retain their accepted responsibilities; V8 adds only short-lived `github_connection_states` with hashed state, application-user binding, PKCE verifier, expiry, and atomic consumption metadata. V9 adds the partial per-user active-state index used by bounded pruning; it changes no stored credential or ownership semantics. Earlier migrations remain immutable. Hibernate uses `ddl-auto: validate` and never creates or updates the schema.
+Flyway owns schema changes. V1-V7 retain their accepted responsibilities; V8 adds only short-lived `github_connection_states` with hashed state, application-user binding, PKCE verifier, expiry, and atomic consumption metadata. V9 adds the partial per-user active-state index used by bounded pruning. V10 adds `review_analysis_checkpoints`, with one bounded provider-neutral candidate payload per review job and a composite tenant-ownership foreign key. Earlier migrations remain immutable. Hibernate uses `ddl-auto: validate` and never creates or updates the schema.
+
+Validated analysis candidates are checkpointed in the same PostgreSQL transaction that consumes the matching usage reservation. Review retries read this checkpoint before quota reservation or AI, rerun deterministic suppression, and resume publication/completion. Publication continues from its separate durable payload and never calls AI. See `docs/reliability.md` for state machines, transaction boundaries, and remaining external-provider ambiguity.
 
 ## Dashboard authentication and authorization
 

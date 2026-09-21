@@ -92,6 +92,10 @@ public final class ApplicationMetrics {
         increment("usage.events", tags("action", action, "outcome", outcome), 1);
     }
 
+    public void analysisCheckpoint(String outcome) {
+        increment("review.analysis.checkpoints", tags("outcome", outcome), 1);
+    }
+
     private void increment(String suffix, List<Tag> tags, double amount) {
         if (amount <= 0) {
             return;

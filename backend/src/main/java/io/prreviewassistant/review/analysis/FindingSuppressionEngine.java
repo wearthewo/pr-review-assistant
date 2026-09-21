@@ -3,5 +3,9 @@ package io.prreviewassistant.review.analysis;
 import io.prreviewassistant.review.context.ReviewContext;
 
 public interface FindingSuppressionEngine {
-    ValidatedReview validate(ReviewAnalysis analysis, ReviewContext context);
+    ValidatedReview validate(ReviewCandidateAnalysis analysis, ReviewContext context);
+
+    default ValidatedReview validate(ReviewAnalysis analysis, ReviewContext context) {
+        return validate(analysis.candidates(), context);
+    }
 }
