@@ -36,6 +36,8 @@ npm run test:e2e
 npm audit --omit=dev
 ```
 
+M19 runs these checks as separate `Frontend` and `E2E` Linux jobs. Both use Node 24 from `.node-version`, activate the declared npm 11.19.1 through Corepack, and install exclusively with `npm ci`. CI production builds use fixed `.invalid` origins and non-secret placeholders only; browser tests use the existing deterministic Playwright environment. Failed E2E runs retain `test-results` for seven days, while successful runs upload nothing. See [the CI contract](../docs/ci-cd.md).
+
 ## Trust and security boundary
 
 Pages are Server Components unless browser behavior requires otherwise; only the framework-required error boundaries are Client Components. Auth configuration, SDK session access, access tokens, backend origin, and the backend call live under `src/lib/server` with `server-only` guards. No bearer token is passed to a Client Component or browser storage, and the SDK's browser access-token route is disabled and blocked. Never add product or auth secrets to `NEXT_PUBLIC_*`.

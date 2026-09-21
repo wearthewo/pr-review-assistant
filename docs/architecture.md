@@ -4,7 +4,7 @@ The implemented asynchronous workflow and recovery invariants are detailed in [r
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M18. M13G closes the integrated read-only dashboard phase, M16 instruments the existing boundaries without changing their behavior, M17 hardens them, and M18 verifies and closes the durable analysis-recovery boundary; review detail, repository mutation, billing, production monitoring infrastructure, and later dashboard product operations remain absent.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M18, and M19 supplies reproducible build verification without changing runtime architecture. M13G closes the integrated read-only dashboard phase, M16 instruments the existing boundaries without changing their behavior, M17 hardens them, and M18 verifies and closes the durable analysis-recovery boundary; review detail, repository mutation, billing, production monitoring infrastructure, deployment, and later dashboard product operations remain absent.
 
 ## System context
 
@@ -113,7 +113,7 @@ The Reviews page uses the same server-only and independently reauthorized path t
 
 ### Infrastructure and delivery
 
-Defines PostgreSQL-only local infrastructure for the backend. It will add CI checks and deployment concerns only when required by a later milestone. Infrastructure does not own product rules. No additional service, CI workflow, or deployment platform choice exists at M4.
+Local infrastructure remains a PostgreSQL-only Docker Compose definition. M19 adds a GitHub Actions verification boundary with independent backend, frontend, and browser-E2E jobs on Linux. It reproduces repository-owned commands, uses only dependency caches, gives the workflow read-only contents permission, and supplies no product secrets. Testcontainers owns ephemeral CI PostgreSQL lifecycle; Compose is not started in CI. The workflow publishes no application artifact and makes no deployment-platform decision. Infrastructure and delivery do not own product rules.
 
 ### Observability boundary
 

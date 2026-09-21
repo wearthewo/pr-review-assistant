@@ -20,4 +20,4 @@ Stop the service without deleting its data:
 docker compose --env-file .env -f infra/docker-compose.yml down
 ```
 
-Deleting the named volume is intentionally not part of the normal shutdown procedure. Redis, Kafka, object storage, mail services, proxies, frontend containers, CI/CD, cloud resources, and production topology remain deferred.
+Deleting the named volume is intentionally not part of the normal shutdown procedure. M19 CI does not start this Compose project; backend tests own ephemeral PostgreSQL 18.6 containers through Testcontainers. Redis, Kafka, object storage, mail services, proxies, frontend containers, deployment automation, cloud resources, and production topology remain deferred.
