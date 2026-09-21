@@ -9,6 +9,10 @@ import io.prreviewassistant.review.context.ReviewContextBuilder;
 import io.prreviewassistant.review.analysis.ReviewAnalysisException;
 import io.prreviewassistant.review.analysis.FindingSuppressionEngine;
 import io.prreviewassistant.review.analysis.ReviewAnalysis;
+import io.prreviewassistant.review.analysis.ReviewAnalysisCheckpointError;
+import io.prreviewassistant.review.analysis.ReviewAnalysisCheckpointException;
+import io.prreviewassistant.review.analysis.ReviewAnalysisCheckpointService;
+import io.prreviewassistant.review.analysis.ReviewCandidateAnalysis;
 import io.prreviewassistant.review.analysis.ReviewEngine;
 import io.prreviewassistant.ai.AiProviderErrorType;
 import io.prreviewassistant.ai.AiProviderException;
@@ -33,6 +37,7 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
     private final PublicationHandoffService publicationHandoff;
     private final RepositoryConfigLoader repositoryConfigLoader;
     private final UsageAccountingService usageAccounting;
+    private final ReviewAnalysisCheckpointService checkpointService;
 
     @Autowired
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
@@ -40,7 +45,8 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
             FindingSuppressionEngine suppressionEngine,
             PublicationHandoffService publicationHandoff,
             RepositoryConfigLoader repositoryConfigLoader,
-            UsageAccountingService usageAccounting) {
+            UsageAccountingService usageAccounting,
+            ReviewAnalysisCheckpointService checkpointService) {
         this.loader = loader;
         this.contextBuilder = contextBuilder;
         this.reviewEngine = reviewEngineProvider.getIfAvailable();
@@ -48,30 +54,39 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
         this.publicationHandoff = publicationHandoff;
         this.repositoryConfigLoader = repositoryConfigLoader;
         this.usageAccounting = usageAccounting;
+        this.checkpointService = checkpointService;
     }
 
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
             ReviewEngine reviewEngine, FindingSuppressionEngine suppressionEngine) {
-        this(loader, contextBuilder, reviewEngine, suppressionEngine, null, null, null);
+        this(loader, contextBuilder, reviewEngine, suppressionEngine, null, null, null, null);
     }
 
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
             ReviewEngine reviewEngine, FindingSuppressionEngine suppressionEngine,
             PublicationHandoffService publicationHandoff) {
-        this(loader, contextBuilder, reviewEngine, suppressionEngine, publicationHandoff, null, null);
+        this(loader, contextBuilder, reviewEngine, suppressionEngine, publicationHandoff, null, null, null);
     }
 
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
             ReviewEngine reviewEngine, FindingSuppressionEngine suppressionEngine,
             PublicationHandoffService publicationHandoff, RepositoryConfigLoader repositoryConfigLoader) {
         this(loader, contextBuilder, reviewEngine, suppressionEngine, publicationHandoff,
-                repositoryConfigLoader, null);
+                repositoryConfigLoader, null, null);
     }
 
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
             ReviewEngine reviewEngine, FindingSuppressionEngine suppressionEngine,
             PublicationHandoffService publicationHandoff, RepositoryConfigLoader repositoryConfigLoader,
             UsageAccountingService usageAccounting) {
+        this(loader, contextBuilder, reviewEngine, suppressionEngine, publicationHandoff,
+                repositoryConfigLoader, usageAccounting, null);
+    }
+
+    PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder,
+            ReviewEngine reviewEngine, FindingSuppressionEngine suppressionEngine,
+            PublicationHandoffService publicationHandoff, RepositoryConfigLoader repositoryConfigLoader,
+            UsageAccountingService usageAccounting, ReviewAnalysisCheckpointService checkpointService) {
         this.loader = loader;
         this.contextBuilder = contextBuilder;
         this.reviewEngine = reviewEngine;
@@ -79,10 +94,11 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
         this.publicationHandoff = publicationHandoff;
         this.repositoryConfigLoader = repositoryConfigLoader;
         this.usageAccounting = usageAccounting;
+        this.checkpointService = checkpointService;
     }
 
     PullRequestRetrievalJobHandler(PullRequestLoader loader, ReviewContextBuilder contextBuilder) {
-        this(loader, contextBuilder, (ReviewEngine) null, null, null, null, null);
+        this(loader, contextBuilder, (ReviewEngine) null, null, null, null, null, null);
     }
 
     @Override
@@ -138,6 +154,16 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
 
     private ReviewJobExecutionResult analyze(ClaimedReviewJob job, ReviewContextBuildResult result,
             EffectiveRepositoryReviewConfig config) {
+        if (checkpointService != null) {
+            try {
+                var checkpoint = checkpointService.find(job.tenantContext(), job.id());
+                if (checkpoint.isPresent()) {
+                    return suppressAndHandoff(job, result, checkpoint.orElseThrow());
+                }
+            } catch (ReviewAnalysisCheckpointException exception) {
+                return map(exception);
+            }
+        }
         if (reviewEngine == null) {
             return ReviewJobExecutionResult.terminal("REVIEW_AI_ANALYSIS_NOT_IMPLEMENTED");
         }
@@ -149,21 +175,18 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
             ReviewAnalysis analysis = repositoryConfigLoader == null
                     ? reviewEngine.analyze(result.context())
                     : reviewEngine.analyze(result.context(), config.enabledCategories());
-            consumeUsage(job, analysis.metadata());
-            var validated = suppressionEngine.validate(analysis, result.context());
-            if (validated.findings().isEmpty()) {
-                return ReviewJobExecutionResult.success();
+            ReviewCandidateAnalysis candidates = analysis.candidates();
+            if (checkpointService == null) {
+                consumeUsage(job, analysis.metadata());
+            } else {
+                checkpointService.createAndConsume(
+                        job.tenantContext(), job.id(), candidates, analysis.metadata());
             }
-            if (publicationHandoff == null) {
-                return ReviewJobExecutionResult.terminal("REVIEW_PUBLISHING_NOT_IMPLEMENTED");
-            }
-            publicationHandoff.handoff(
-                    job.id(), job.tenantContext(), validated, result.context().pullRequest());
-            return ReviewJobExecutionResult.success();
+            return suppressAndHandoff(job, result, analysis);
         } catch (AiProviderException exception) {
             return map(exception.errorType());
         } catch (ReviewAnalysisException exception) {
-            if (exception.consumptionMetadata().isPresent()) {
+            if (checkpointService == null && exception.consumptionMetadata().isPresent()) {
                 try {
                     consumeUsage(job, exception.consumptionMetadata().orElseThrow());
                 } catch (UsageAccountingException accountingException) {
@@ -173,9 +196,42 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
             return ReviewJobExecutionResult.terminal("AI_INVALID_OUTPUT");
         } catch (UsageAccountingException exception) {
             return map(exception);
+        } catch (ReviewAnalysisCheckpointException exception) {
+            return map(exception);
         } catch (IllegalArgumentException exception) {
             return ReviewJobExecutionResult.terminal("FINDING_SUPPRESSION_INVALID");
         }
+    }
+
+    private ReviewJobExecutionResult suppressAndHandoff(
+            ClaimedReviewJob job,
+            ReviewContextBuildResult result,
+            ReviewCandidateAnalysis analysis) {
+        var validated = suppressionEngine.validate(analysis, result.context());
+        return handoff(job, result, validated);
+    }
+
+    private ReviewJobExecutionResult suppressAndHandoff(
+            ClaimedReviewJob job,
+            ReviewContextBuildResult result,
+            ReviewAnalysis analysis) {
+        var validated = suppressionEngine.validate(analysis, result.context());
+        return handoff(job, result, validated);
+    }
+
+    private ReviewJobExecutionResult handoff(
+            ClaimedReviewJob job,
+            ReviewContextBuildResult result,
+            io.prreviewassistant.review.analysis.ValidatedReview validated) {
+        if (validated.findings().isEmpty()) {
+            return ReviewJobExecutionResult.success();
+        }
+        if (publicationHandoff == null) {
+            return ReviewJobExecutionResult.terminal("REVIEW_PUBLISHING_NOT_IMPLEMENTED");
+        }
+        publicationHandoff.handoff(
+                job.id(), job.tenantContext(), validated, result.context().pullRequest());
+        return ReviewJobExecutionResult.success();
     }
 
     private ReviewJobExecutionResult reserveUsage(ClaimedReviewJob job) {
@@ -207,6 +263,12 @@ final class PullRequestRetrievalJobHandler implements ReviewJobHandler {
         return exception.error() == UsageAccountingError.USAGE_TENANT_MISMATCH
                 ? ReviewJobExecutionResult.terminal("USAGE_TENANT_MISMATCH")
                 : ReviewJobExecutionResult.retryable("USAGE_ACCOUNTING_FAILED");
+    }
+
+    private ReviewJobExecutionResult map(ReviewAnalysisCheckpointException exception) {
+        return exception.error() == ReviewAnalysisCheckpointError.INCONSISTENT_STATE
+                ? ReviewJobExecutionResult.terminal("USAGE_ANALYSIS_RESULT_UNAVAILABLE")
+                : ReviewJobExecutionResult.retryable("ANALYSIS_CHECKPOINT_FAILED");
     }
 
     private ReviewJobExecutionResult map(AiProviderErrorType type) {

@@ -1,8 +1,10 @@
 # Development Guide
 
+For M18 workflow recovery, start with [reliability.md](reliability.md). Flyway V10 is additive: clean environments migrate V1 through V10, while existing V9 data is retained without fabricated checkpoints. A historical `CONSUMED` analysis with no checkpoint is intentionally non-recoverable and fails closed.
+
 ## Current state
 
-The application is complete through M17. M13G closes integration and browser security testing for the Node.js 24 LTS / Next.js 16.3.5 read-only dashboard; M16 adds application instrumentation without an external monitoring stack; M17 adds the focused hardening and audit documented in `security-hardening.md`. It contains no review detail/retry, repository mutation, settings feature, quota mutation, organization ownership flow, billing, CI/CD workflow, or deployment definition.
+The application is complete through M18. M13G closes integration and browser security testing for the Node.js 24 LTS / Next.js 16.3.5 read-only dashboard; M16 adds application instrumentation without an external monitoring stack; M17 adds the focused hardening and audit documented in `security-hardening.md`; M18 adds the durable analysis checkpoint and end-to-end reliability verification documented in `reliability.md`. It contains no review detail/retry, repository mutation, settings feature, quota mutation, organization ownership flow, billing, CI/CD workflow, or deployment definition.
 
 ## Prerequisites
 

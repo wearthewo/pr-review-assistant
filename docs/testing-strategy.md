@@ -1,5 +1,11 @@
 # Testing Strategy
 
+## End-to-end reliability
+
+M18 adds a focused Spring Boot/PostgreSQL 18.6 Testcontainers slice that begins with a correctly signed webhook and runs the production ingestion, review queue/worker, tenant ownership, usage accounting, durable analysis checkpoint, suppression, publication handoff, publication queue/worker, and terminal state transitions. Only GitHub and AI network boundaries are deterministic mocks. The suite asserts durable intermediate state, exact tenant/revision identity, one logical AI invocation, one usage event, and one publication.
+
+Checkpoint tests cover atomic checkpoint/usage commit and rollback, retry recovery with zero and publishable candidates, historical consumed-without-result failure, concurrent creation, tenant isolation, payload bounds/revalidation, clean V1-to-V10 migration, and populated V9-to-V10 upgrade. Existing queue, webhook, usage, publication, configuration, dashboard, observability, and security suites remain the invariant coverage described in [reliability.md](reliability.md); tests use controlled clocks and latches rather than sleeps for correctness.
+
 ## Goals
 
 Testing must provide confidence in behavior, boundaries, tenant isolation, idempotency, retry safety, concurrency, provider contracts, and safe failure. Tests should be deterministic, readable, and proportionate to risk. The default suite must not depend on live GitHub, a live AI provider, or developer-owned infrastructure.

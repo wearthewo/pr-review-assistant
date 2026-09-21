@@ -89,7 +89,7 @@ public final class DeterministicFindingSuppressionEngine implements FindingSuppr
     }
 
     @Override
-    public ValidatedReview validate(ReviewAnalysis analysis, ReviewContext context) {
+    public ValidatedReview validate(ReviewCandidateAnalysis analysis, ReviewContext context) {
         Objects.requireNonNull(analysis, "analysis is required");
         Objects.requireNonNull(context, "context is required");
         if (!analysis.target().equals(context.target()) || analysis.findings().size() > MAX_CANDIDATES
@@ -137,7 +137,7 @@ public final class DeterministicFindingSuppressionEngine implements FindingSuppr
         distinct.forEach(finding ->
                 metrics.findingsAccepted(finding.category(), finding.severity(), 1));
         suppressed.forEach(metrics::findingsSuppressed);
-        return new ValidatedReview(analysis.target(), distinct, summary, analysis.metadata());
+        return new ValidatedReview(analysis.target(), distinct, summary);
     }
 
     private SuppressionReason firstFailedGate(ReviewFinding finding, SupportIndex support) {

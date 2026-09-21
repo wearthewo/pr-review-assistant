@@ -1,8 +1,10 @@
 # Architecture
 
+The implemented asynchronous workflow and recovery invariants are detailed in [reliability.md](reliability.md). In M18, validated provider-neutral AI candidates cross a durable boundary: the checkpoint insert and matching usage consumption share one PostgreSQL transaction. Deterministic suppression and publication handoff occur afterward and can be repeated safely without calling AI again. This does not make the external AI call exactly once; failure before checkpointing remains an explicitly conservative ambiguity.
+
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M16. M13G closes the integrated read-only dashboard phase and M16 instruments the existing boundaries without changing their behavior; review detail, repository mutation, billing, production monitoring infrastructure, and later dashboard product operations remain absent.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M18. M13G closes the integrated read-only dashboard phase, M16 instruments the existing boundaries without changing their behavior, M17 hardens them, and M18 verifies and closes the durable analysis-recovery boundary; review detail, repository mutation, billing, production monitoring infrastructure, and later dashboard product operations remain absent.
 
 ## System context
 
