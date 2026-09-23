@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. M20 defines a reproducible Render deployment foundation for the accepted M0-M19 system; no production resource has been created by this repository change.
+> Project status: **pre-alpha**. M21 defines production operations, alerting, recovery, and launch gates for the accepted M0-M20 system; no production resource has been created by this repository change.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -69,6 +69,8 @@ Root policy and contributor files apply across the monorepo. Directory READMEs d
 - [Development guide](docs/development.md)
 - [Continuous integration](docs/ci-cd.md)
 - [Production deployment](docs/deployment.md)
+- [Production operations runbook](docs/operations-runbook.md)
+- [Launch checklist](docs/launch-checklist.md)
 - [Observability](docs/observability.md)
 - [M17 security hardening review](docs/security-hardening.md)
 - [Workflow reliability](docs/reliability.md)
@@ -91,6 +93,8 @@ On Windows PowerShell, use `Copy-Item .env.example .env` and run `mvnw.cmd` from
 After startup, public health, liveness, and readiness endpoints are under `http://localhost:8080/actuator/health`; Prometheus-format metrics at `/actuator/prometheus` require authentication. `POST http://localhost:8080/api/webhooks/github` is the GitHub boundary and authenticates requests with `X-Hub-Signature-256`. See [docs/development.md](docs/development.md) and [docs/observability.md](docs/observability.md) for configuration, inspection, test, and shutdown commands.
 
 ## Current milestone
+
+M21 audits the M16 telemetry contract, defines production-safe JSON logging, provides seven vendor-neutral Prometheus alert rules, documents Render notifications/log streaming, establishes incident and PostgreSQL recovery runbooks, and makes alert routing plus a verified restore a launch gate. A local PostgreSQL 18.6 synthetic backup/restore drill passed; no cloud resource, monitoring vendor, alert destination, or real credential was used.
 
 M20 adds multi-stage non-root backend and frontend images, a root Render Blueprint, a production Spring profile, Render-generated PostgreSQL binding with required internal TLS, health/graceful-shutdown policy, and a fourth blocking-candidate `Docker` CI job. The intended first topology is two paid, non-sleeping Render web services plus one private Render PostgreSQL 18 instance in Frankfurt. The backend service initially owns both APIs and durable workers. Provisioning, provider registration, secret upload, custom domains, monitoring infrastructure, and any live deployment remain operator actions; see [docs/deployment.md](docs/deployment.md).
 

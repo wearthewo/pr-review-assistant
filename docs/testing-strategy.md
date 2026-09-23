@@ -110,6 +110,8 @@ Jobs are independently diagnosable and have explicit timeouts. Caches contain on
 
 M20 container verification builds both images from clean contexts, inspects effective users/history/files, searches for secret material and excluded source, runs the frontend with synthetic `.invalid` configuration, runs the backend against disposable PostgreSQL with a generated key and external work disabled, probes health/security headers, and performs bounded graceful stops. These smoke tests use no live GitHub, Auth0, OpenAI, or production database. A future deployed smoke test follows [deployment.md](deployment.md).
 
+M21 operational verification runs `promtool check rules` against the committed alert policy, performs a synthetic PostgreSQL 18.6 custom-format dump and isolated restore with digest/count checks, and repeats the full backend, frontend, browser E2E, and production-image gates. The local drill deliberately contains no production/customer data and does not substitute for a Render PITR/export drill before launch.
+
 ## Completion evidence
 
 Contributors must report the exact commands and results for tests and checks run, plus anything skipped and why. Passing unrelated tests is not evidence for an untested behavior. Coverage percentages may inform gaps but do not replace behavior- and risk-based test design.
