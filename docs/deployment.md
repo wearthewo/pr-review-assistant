@@ -124,9 +124,13 @@ Spring graceful shutdown has a 110-second phase timeout, scheduled work is allow
 
 ## Logs, metrics, backup, rollback, and rotation
 
-Both services log to stdout/stderr for Render collection. Structured backend events remain bounded and secret-free. `/actuator/prometheus` remains JWT-protected; M20 does not deploy a monitoring vendor or open a scrape endpoint. Configure Render log retention/alerts according to the product's incident policy and alert at minimum on failed deploys, repeated restarts, readiness failure, queue age, terminal jobs, ambiguous publication, and quota/provider failure when an authenticated metrics collector is introduced.
+Both services log to stdout/stderr for Render collection. Structured backend events remain bounded and secret-free. In the Render workspace, set **Integrations -> Notifications** to email and Slack with at least failure notifications; verify per-service overrides do not disable backend/frontend health or deploy alerts. Render treats a running service as unhealthy after repeated health failures and can restart it, so route those notifications to the paging path.
 
-Paid Render PostgreSQL provides managed point-in-time recovery; verify the recovery window in the workspace and schedule/export logical backups when retention requirements exceed it. Perform a restore drill into a new database, validate Flyway/schema and tenant counts, then switch services deliberately. A backup that has never been restored is unverified.
+For retention beyond the workspace plan, configure **Integrations -> Observability -> Log Streams** to an approved HTTPS or TLS-syslog destination. Store the ingestion token only in Render, exclude preview logs unless explicitly needed, verify JSON fields arrive intact, and create log-based terminal/ambiguity fallbacks without indexing source-like values. Render limits per-instance log volume, so metrics—not log counts—remain the primary alert source.
+
+`/actuator/prometheus` remains JWT-protected. Before launch, select a collector capable of server-side bearer authentication and token rotation, import `infra/monitoring/prometheus-alerts.yml`, stream Render platform/PostgreSQL metrics to the same provider when supported, and test routes. Do not expose Actuator or deploy an unauthenticated proxy. Render's native notifications cover deploy/image-pull/service-health failures; the external provider covers queue, terminal workflow, publication ambiguity, AI failure, and database-readiness rules.
+
+Paid Render PostgreSQL provides managed point-in-time recovery; verify the recovery window in the workspace and schedule/export logical backups when retention requirements exceed it. Follow `operations-runbook.md` for isolated PITR/logical restore and quarterly drill evidence. A backup that has never been restored is unverified.
 
 Application rollback means redeploying a previously green commit/image definition. Database rollback does not mean editing or deleting a Flyway migration: restore to a new managed database when data/schema recovery is required, point a controlled backend deploy to it, verify readiness and smoke tests, then retire the damaged instance. Backward-compatible migrations are what make ordinary code rollback possible.
 
@@ -138,4 +142,4 @@ Scale vertically first when memory/CPU saturation, GC pressure, request latency,
 
 Primary cost drivers are the two always-on compute plans, PostgreSQL compute/storage/backup retention, extra instances, outbound provider/network use, Auth0, GitHub, and OpenAI consumption. M20 makes no price claim and creates no cloud resource.
 
-Deferred: custom domains, organization ownership bootstrap, billing, separate workers, deployment-time migration identity, HA/read replicas, automated restore drills, monitoring vendor/alert routing, tracing backend, container registry/signing/SBOM publication, autoscaling, WAF/rate-limiter infrastructure, and staging topology.
+Deferred: custom domains, organization ownership bootstrap, billing, separate workers, deployment-time migration identity, HA/read replicas, automated restore drills, a repository-selected monitoring vendor, tracing backend, container registry/signing/SBOM publication, autoscaling, WAF/rate-limiter infrastructure, and staging topology. Alert routing itself is a launch gate even though provider selection and credentials remain external.

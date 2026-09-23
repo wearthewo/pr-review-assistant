@@ -1,0 +1,81 @@
+groups:
+  - name: pr-review-assistant-availability
+    rules:
+      - alert: PrReviewAssistantBackendUnavailable
+        expr: up{job="pr-review-assistant-backend"} == 0
+        for: 2m
+        labels:
+          severity: page
+          service: backend
+        annotations:
+          summary: Backend metrics target has been unavailable for two minutes
+          runbook: docs/operations-runbook.md#backend-unavailable
+
+      - alert: PrReviewAssistantDatabaseUnavailable
+        expr: probe_success{job="pr-review-assistant-backend-readiness"} == 0
+        for: 2m
+        labels:
+          severity: page
+          service: database
+        annotations:
+          summary: Backend readiness has failed for two minutes
+          runbook: docs/operations-runbook.md#database-or-connectivity-failure
+
+  - name: pr-review-assistant-workflows
+    rules:
+      - alert: PrReviewAssistantRepeatedReviewFailures
+        expr: sum(increase(pr_review_assistant_review_jobs_outcomes_total{outcome="failed"}[15m])) >= 3
+        for: 5m
+        labels:
+          severity: ticket
+          service: review-worker
+        annotations:
+          summary: Three or more review jobs failed in a fifteen-minute window
+          runbook: docs/operations-runbook.md#repeated-review-failures
+
+      - alert: PrReviewAssistantPublicationFailure
+        expr: sum(increase(pr_review_assistant_publication_attempts_total{outcome=~"terminal_failure|ambiguous"}[10m])) >= 1
+        for: 0m
+        labels:
+          severity: page
+          service: publication-worker
+        annotations:
+          summary: A publication became terminal or ambiguous
+          runbook: docs/operations-runbook.md#publication-failure-or-ambiguity
+
+      - alert: PrReviewAssistantActionableJobStuck
+        expr: max by (queue) (pr_review_assistant_queue_oldest_actionable_age_seconds) > 600
+        for: 5m
+        labels:
+          severity: page
+          service: workers
+        annotations:
+          summary: A due or expired queue item has remained actionable for over ten minutes
+          runbook: docs/operations-runbook.md#stuck-or-reclaimed-jobs
+
+      - alert: PrReviewAssistantRepeatedLeaseRecovery
+        expr: sum(increase(pr_review_assistant_review_jobs_stale_recovered_total[15m])) >= 3
+        for: 0m
+        labels:
+          severity: ticket
+          service: review-worker
+        annotations:
+          summary: Three or more expired review claims were reclaimed in fifteen minutes
+          runbook: docs/operations-runbook.md#stuck-or-reclaimed-jobs
+
+      - alert: PrReviewAssistantAbnormalAiProviderFailures
+        expr: |
+          sum(increase(pr_review_assistant_ai_requests_total{outcome="failure"}[15m])) >= 3
+          and
+          (
+            sum(increase(pr_review_assistant_ai_requests_total{outcome="failure"}[15m]))
+            /
+            clamp_min(sum(increase(pr_review_assistant_ai_requests_total[15m])), 1)
+          ) > 0.25
+        for: 5m
+        labels:
+          severity: ticket
+          service: ai-provider
+        annotations:
+          summary: AI provider failures exceed both the count and ratio thresholds
+          runbook: docs/operations-runbook.md#abnormal-ai-provider-failures

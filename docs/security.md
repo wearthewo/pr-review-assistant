@@ -242,6 +242,10 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 - AI provider responses cannot authorize actions or publish directly. Provider credentials remain inside the AI adapter.
 - Provider failure must not corrupt durable job state, cross tenant boundaries, leak content, or cause unbounded retries.
 
+## Production observability safety
+
+Production logs are structured JSON with bounded application-owned event names and controlled outcome/error codes. Source, patches, prompts, model responses, JWTs, GitHub/OpenAI tokens, authorization headers, cookies, private keys, raw configuration, and provider response bodies are forbidden in logs and incident records. Operators must not enable HTTP-body, SQL-bind, SDK-wire, or authentication-token debug logging during diagnosis. Metrics use controlled low-cardinality labels and never tenant or workflow identifiers.
+
 See [threat-model.md](threat-model.md) for threat scenarios and [testing-strategy.md](testing-strategy.md) for required regression coverage.
 
 ## Production deployment boundary

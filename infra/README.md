@@ -23,3 +23,5 @@ docker compose --env-file .env -f infra/docker-compose.yml down
 Deleting the named volume is intentionally not part of the normal shutdown procedure. CI does not start this Compose project; backend tests own ephemeral PostgreSQL 18.6 containers through Testcontainers.
 
 M20 production uses two Docker web services and managed PostgreSQL from the root Blueprint. Local Compose remains PostgreSQL-only and is not a production emulator. Redis, Kafka, object storage, and a separate worker service remain absent. See [deployment.md](../docs/deployment.md).
+
+`monitoring/prometheus-alerts.yml` contains the M21 vendor-neutral application alert policy. It does not deploy a collector or monitoring service; see [observability.md](../docs/observability.md) and the [operations runbook](../docs/operations-runbook.md).

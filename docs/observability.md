@@ -4,7 +4,7 @@
 
 M16 instruments the existing application without changing review behavior, transactions, or idempotency. Logs describe individual operational events, metrics aggregate bounded outcomes, and health reports whether this application instance can serve its role. Telemetry is best effort: a metrics-registry failure cannot fail webhook acceptance, a job transition, publication, or usage accounting.
 
-No monitoring vendor, collector, dashboard, alerting rule, or observability database is part of M16. A future production deployment may scrape the protected Prometheus endpoint and route JSON logs; that backend choice remains deferred to M20.
+M16 created the instrumentation; M21 turns it into an operator-owned policy without deploying a monitoring vendor. Render provides platform health, logs, and resource metrics. A selected external provider must collect the protected application metrics and apply the version-controlled rules in `infra/monitoring/prometheus-alerts.yml` before launch.
 
 ## Correlation and structured logs
 
@@ -25,6 +25,8 @@ Console logs use Spring Boot's Logstash JSON format. Application lifecycle event
 | `publication_stale_claim` | DEBUG | `publication_id`, `attempt` |
 
 Logs do not contain request/response bodies, source, patches, prompts, model responses, findings, repository configuration, credentials, authorization headers, cookies, OAuth state/code/verifier, or provider error bodies. Customer names, profiles, and email are not observability fields.
+
+Production logging is newline-delimited Logstash JSON on stdout/stderr. `timestamp`, severity, logger, message, stable `event`, and the bounded fields above form the supported schema. Stack traces are for application defects only and must not be constructed from provider bodies or untrusted repository data. INFO records lifecycle outcomes, WARN records retry/degradation, ERROR records terminal or internal failure, and DEBUG is disabled in production. Operators must not enable HTTP-body, SQL-bind, SDK-wire, or security-token debug logging during incidents.
 
 ## Metric namespace and inventory
 
@@ -99,6 +101,6 @@ Never place real tokens in shell history or documentation. Automated tests use a
 
 ## Deferred work
 
-Render collects application stdout/stderr in the M20 topology, and health checks use the existing readiness/root boundaries. `/actuator/prometheus` remains authenticated; M20 does not deploy a scraper or weaken that protection. Operators should alert on deploy/restart/readiness state immediately and add an authenticated collector for queue age, terminal work, ambiguity, and provider outcomes when a monitoring backend is selected.
+Render collects application stdout/stderr, health checks use the existing readiness/root boundaries, and `/actuator/prometheus` remains authenticated. Configure Render failure notifications and log streaming as described in `deployment.md`. The selected metrics provider must implement the collector contract and alert rules in `infra/monitoring`; making Prometheus public is not an acceptable shortcut.
 
-A customer/admin observability UI, tracing backend, Prometheus/Grafana/Loki/Tempo stack, vendor SDK, durable log archive, formal SLOs, and alert routing remain deferred. Production retention and incident policy must be set by the operator; see [deployment.md](deployment.md).
+A customer/admin observability UI, tracing backend, bundled Prometheus/Grafana/Loki/Tempo stack, vendor SDK, and formal customer-facing SLO remain deferred. Production response and recovery are defined in [operations-runbook.md](operations-runbook.md), and go-live gates are in [launch-checklist.md](launch-checklist.md).
