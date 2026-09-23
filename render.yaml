@@ -1,0 +1,117 @@
+previews:
+  generation: "off"
+
+services:
+  - type: web
+    name: pr-review-assistant-backend
+    runtime: docker
+    branch: main
+    region: frankfurt
+    plan: 1c-2g
+    numInstances: 1
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    autoDeployTrigger: checksPass
+    healthCheckPath: /actuator/health/readiness
+    maxShutdownDelaySeconds: 120
+    buildFilter:
+      paths:
+        - backend/**
+        - render.yaml
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: production
+      - key: PORT
+        value: "10000"
+      - key: DB_CONNECTION_URI
+        fromDatabase:
+          name: pr-review-assistant-db
+          property: connectionString
+      - key: DB_USERNAME
+        fromDatabase:
+          name: pr-review-assistant-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: pr-review-assistant-db
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: pr-review-assistant-db
+          property: database
+      - key: GITHUB_APP_ID
+        sync: false
+      - key: GITHUB_PRIVATE_KEY_PATH
+        value: /etc/secrets/github-app-private-key.pem
+      - key: GITHUB_WEBHOOK_SECRET
+        sync: false
+      - key: GITHUB_OAUTH_CLIENT_ID
+        sync: false
+      - key: GITHUB_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_OAUTH_CALLBACK_URL
+        sync: false
+      - key: DASHBOARD_AUTH_ISSUER
+        sync: false
+      - key: DASHBOARD_AUTH_AUDIENCE
+        sync: false
+      - key: DASHBOARD_AUTH_JWK_SET_URI
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: REVIEW_WORKER_ENABLED
+        value: "true"
+      - key: REVIEW_WORKER_LEASE_DURATION
+        value: 5m
+      - key: REVIEW_PUBLICATION_ENABLED
+        value: "true"
+      - key: REVIEW_PUBLICATION_LEASE_DURATION
+        value: 3m
+      - key: REVIEW_AI_ENABLED
+        value: "true"
+
+  - type: web
+    name: pr-review-assistant-frontend
+    runtime: docker
+    branch: main
+    region: frankfurt
+    plan: 0.5c-512mb
+    numInstances: 1
+    dockerContext: ./frontend
+    dockerfilePath: ./frontend/Dockerfile
+    autoDeployTrigger: checksPass
+    healthCheckPath: /
+    maxShutdownDelaySeconds: 30
+    buildFilter:
+      paths:
+        - frontend/**
+        - render.yaml
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: BACKEND_BASE_URL
+        sync: false
+      - key: AUTH0_DOMAIN
+        sync: false
+      - key: AUTH0_CLIENT_ID
+        sync: false
+      - key: AUTH0_CLIENT_SECRET
+        sync: false
+      - key: AUTH0_SECRET
+        generateValue: true
+      - key: AUTH0_AUDIENCE
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+
+databases:
+  - name: pr-review-assistant-db
+    region: frankfurt
+    plan: 0.5c-1g
+    postgresMajorVersion: "18"
+    databaseName: pr_review_assistant
+    user: pr_review_assistant
+    diskSizeGB: 15
+    storageAutoscalingEnabled: false
+    connectionPool: none
+    ipAllowList: []

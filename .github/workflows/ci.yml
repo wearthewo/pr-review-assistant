@@ -143,3 +143,22 @@ jobs:
           path: frontend/test-results
           if-no-files-found: ignore
           retention-days: 7
+
+  docker:
+    name: Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs:
+      - backend
+      - frontend
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build backend image
+        run: docker build --file backend/Dockerfile --tag pr-review-assistant-backend:ci backend
+
+      - name: Build frontend image
+        run: docker build --file frontend/Dockerfile --tag pr-review-assistant-frontend:ci frontend

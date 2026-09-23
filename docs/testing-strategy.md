@@ -104,9 +104,11 @@ M13B security regressions prove invalid JWT classes fail, email is absent from i
 
 ## CI expectations
 
-M19 implements GitHub Actions verification as three stable Linux jobs: `Backend`, `Frontend`, and `E2E`. Backend runs the complete Maven `clean verify` suite against PostgreSQL 18.6 Testcontainers, including clean V1-V10 and populated V9-V10 migration paths. Frontend runs a clean lockfile install, lint, type-check, 55-test foundation suite, production build, production/full audits, and direct dependency inspection. E2E installs only Chromium and runs the existing 18 desktop/mobile browser tests.
+GitHub Actions verification has four stable Linux jobs: `Backend`, `Frontend`, `E2E`, and `Docker`. Backend runs the complete Maven `clean verify` suite against PostgreSQL 18.6 Testcontainers, including clean V1-V10 and populated V9-V10 migration paths. Frontend runs a clean lockfile install, lint, type-check, its foundation suite, production build, production/full audits, and direct dependency inspection. E2E installs only Chromium and runs the desktop/mobile browser tests. Docker waits for backend/frontend verification and then builds both exact production Dockerfiles without pushing them or receiving secrets.
 
 Jobs are independently diagnosable and have explicit timeouts. Caches contain only downloaded Maven/npm dependencies, never compiled output. Failed E2E runs retain bounded Playwright traces/screenshots for seven days; successful runs upload nothing. Failures must remain reproducible locally through repository-owned commands, and flaky tests may not be hidden by indiscriminate retries. See [ci-cd.md](ci-cd.md).
+
+M20 container verification builds both images from clean contexts, inspects effective users/history/files, searches for secret material and excluded source, runs the frontend with synthetic `.invalid` configuration, runs the backend against disposable PostgreSQL with a generated key and external work disabled, probes health/security headers, and performs bounded graceful stops. These smoke tests use no live GitHub, Auth0, OpenAI, or production database. A future deployed smoke test follows [deployment.md](deployment.md).
 
 ## Completion evidence
 

@@ -1,0 +1,33 @@
+server:
+  address: 0.0.0.0
+  port: ${PORT:10000}
+  shutdown: graceful
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 110s
+  task:
+    scheduling:
+      shutdown:
+        await-termination: true
+        await-termination-period: 105s
+  datasource:
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 10000
+      validation-timeout: 5000
+      idle-timeout: 300000
+      max-lifetime: 1500000
+
+logging:
+  level:
+    root: INFO
+    org.springframework: INFO
+
+deployment:
+  database:
+    connection-uri: ${DB_CONNECTION_URI}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    database: ${DB_NAME}

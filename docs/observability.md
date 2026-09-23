@@ -99,4 +99,6 @@ Never place real tokens in shell history or documentation. Automated tests use a
 
 ## Deferred work
 
-M16 does not add a customer/admin observability UI, tracing backend, alerting, SLOs, Prometheus/Grafana/Loki/Tempo containers, a vendor SDK, production log routing, deployment configuration, or M17 security hardening. Production retention, scrape identity/network policy, dashboards, and alerts belong to deployment work in M20.
+Render collects application stdout/stderr in the M20 topology, and health checks use the existing readiness/root boundaries. `/actuator/prometheus` remains authenticated; M20 does not deploy a scraper or weaken that protection. Operators should alert on deploy/restart/readiness state immediately and add an authenticated collector for queue age, terminal work, ambiguity, and provider outcomes when a monitoring backend is selected.
+
+A customer/admin observability UI, tracing backend, Prometheus/Grafana/Loki/Tempo stack, vendor SDK, durable log archive, formal SLOs, and alert routing remain deferred. Production retention and incident policy must be set by the operator; see [deployment.md](deployment.md).

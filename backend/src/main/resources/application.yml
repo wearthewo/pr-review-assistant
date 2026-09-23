@@ -2,7 +2,7 @@ spring:
   application:
     name: pr-review-assistant-backend
   datasource:
-    url: ${DB_JDBC_URL}
+    url: ${DB_JDBC_URL:}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver

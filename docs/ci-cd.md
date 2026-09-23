@@ -2,9 +2,9 @@
 
 ## Scope
 
-M19 adds build verification only. The GitHub Actions workflow in `.github/workflows/ci.yml` validates pull requests targeting `main`, pushes to `main`, and explicit manual runs. It does not deploy, publish packages or images, mutate infrastructure, use production credentials, or choose a production platform.
+M19 established build verification. M20 retains that trust boundary and adds deterministic container builds for the selected Render packaging. The GitHub Actions workflow validates pull requests targeting `main`, pushes to `main`, and explicit manual runs. It does not deploy, publish packages or images, mutate infrastructure, or use production credentials.
 
-The stable required-check candidates are the `Backend`, `Frontend`, and `E2E` jobs. Repository branch protection should require all three before merge.
+The stable required-check candidates are `Backend`, `Frontend`, `E2E`, and `Docker`. Repository branch protection should require all four before merge. Render uses `autoDeployTrigger: checksPass` on `main`; branch protection remains the authority that prevents unverified code from reaching that branch.
 
 ## Trigger and concurrency policy
 
@@ -79,6 +79,10 @@ Backend, frontend, and E2E jobs have 25-, 15-, and 20-minute limits respectively
 
 For a local failure, reproduce the exact job command from the relevant directory with Java 21 or Node 24 active. For Testcontainers failures, verify Docker availability and PostgreSQL image access. For Playwright failures, inspect the locally generated `frontend/test-results`; CI exposes that directory only for failed E2E runs.
 
+## Docker job
+
+The `Docker` job depends on successful `Backend` and `Frontend` jobs, then builds `backend/Dockerfile` and `frontend/Dockerfile` from their narrow monorepo contexts. It does not repeat the complete backend test suite inside the image, push to a registry, upload an image tarball, inspect production values, or receive a deploy token. Runtime smoke tests remain local/operator verification because CI has no product configuration or long-lived service environment.
+
 ## Intentionally deferred
 
-There are no application Dockerfiles, so M19 does not invent image builds. Artifact signing, SBOM generation, container publishing, deployment environments, migration rollout orchestration, smoke tests against deployed services, rollback, and M20 production infrastructure remain deferred.
+Artifact signing, SBOM publication, container registry publishing, deploy credentials, smoke tests against live services, and automated rollback remain deferred. The Render Blueprint consumes the repository Dockerfiles directly only after protected-main checks pass; operational rollout and rollback are documented in [deployment.md](deployment.md).

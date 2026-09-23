@@ -189,3 +189,16 @@ Deployment should use separate migration and runtime database roles when M20 int
 ## Troubleshooting and completion
 
 When a command or test fails, preserve the original error, isolate whether the cause is code, configuration, dependency, or environment, and document any unmet prerequisite. Before handing off work, inspect the diff and report exact changes, verification performed, skipped checks, unresolved issues, and architectural impact.
+
+## Production container development
+
+Build the same images consumed by Render from the repository root:
+
+```sh
+docker build -f backend/Dockerfile -t pr-review-assistant-backend:local backend
+docker build -f frontend/Dockerfile -t pr-review-assistant-frontend:local frontend
+```
+
+The backend image expects the `production` profile, Render-shaped database references, an externally mounted PKCS#8 key, and all provider/auth configuration. Local smoke tests use only synthetic credentials, disposable PostgreSQL 18.6, disabled workers/AI/publication, and a generated test key. The frontend uses `.invalid` provider/backend origins and synthetic Auth0 secrets; loading `/` requires no real provider call.
+
+Inspect effective users, image history, environment, and files before accepting either image. Verify backend readiness, frontend root/security headers, non-root identity, absence of source/key/env files, and graceful `docker stop`. Do not weaken HTTPS, authentication, database TLS, or secret validation to simplify a test. See [deployment.md](deployment.md).

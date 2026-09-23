@@ -4,7 +4,7 @@ The implemented asynchronous workflow and recovery invariants are detailed in [r
 
 ## Purpose and status
 
-This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M18, and M19 supplies reproducible build verification without changing runtime architecture. M13G closes the integrated read-only dashboard phase, M16 instruments the existing boundaries without changing their behavior, M17 hardens them, and M18 verifies and closes the durable analysis-recovery boundary; review detail, repository mutation, billing, production monitoring infrastructure, deployment, and later dashboard product operations remain absent.
+This document defines the intended component boundaries and responsibilities. It deliberately avoids class-level design. The backend is complete through M18, M19 supplies reproducible build verification, and M20 defines the first production deployment boundary without changing product rules. M13G closes the integrated read-only dashboard phase, M16 instruments the existing boundaries, M17 hardens them, and M18 verifies the durable analysis-recovery boundary; review detail, repository mutation, billing, production monitoring infrastructure, and later dashboard product operations remain absent.
 
 ## System context
 
@@ -113,7 +113,9 @@ The Reviews page uses the same server-only and independently reauthorized path t
 
 ### Infrastructure and delivery
 
-Local infrastructure remains a PostgreSQL-only Docker Compose definition. M19 adds a GitHub Actions verification boundary with independent backend, frontend, and browser-E2E jobs on Linux. It reproduces repository-owned commands, uses only dependency caches, gives the workflow read-only contents permission, and supplies no product secrets. Testcontainers owns ephemeral CI PostgreSQL lifecycle; Compose is not started in CI. The workflow publishes no application artifact and makes no deployment-platform decision. Infrastructure and delivery do not own product rules.
+Local infrastructure remains a PostgreSQL-only Docker Compose definition. GitHub Actions has independent backend, frontend, browser-E2E, and container-build jobs on Linux. It reproduces repository-owned commands, uses only dependency caches, gives the workflow read-only contents permission, and supplies no product secrets. Testcontainers owns ephemeral CI PostgreSQL lifecycle; Compose is not started in CI. CI builds but does not push images or deploy.
+
+M20 selects Render for the first deployment topology: separate non-root Docker web services for Spring Boot and Next.js plus managed PostgreSQL 18 in one region. The backend initially combines API and workers. Render-generated database references stay server-side; private database traffic requires TLS and public database access is blocked. Next.js reaches Spring only from the server using the public HTTPS backend origin, preserving the existing production URL validator and avoiding browser CORS. Render health gates and Spring graceful shutdown surround Flyway startup and durable lease recovery. Infrastructure and delivery do not own product rules. See [deployment.md](deployment.md).
 
 ### Observability boundary
 
@@ -136,7 +138,7 @@ Core review concepts and policies are independent of frameworks, persistence, Gi
 
 ## Deployment view
 
-The backend is currently one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, internal tenant/installation/repository ownership, human identity/membership authorization, a bounded repository read endpoint, disabled-by-default job pollers, exact-revision repository configuration, a disabled-by-default AI adapter/review engine, deterministic finding suppression, durable review publication, and tenant usage accounting. Database locks, constraints, claim tokens, and tenant/month quota locks make provisioning, work ownership, and quota decisions safe across processes. PostgreSQL stores ownership UUIDs, webhook envelopes, immutable targets, usage states with bounded operational metadata, and only the sanitized accepted user-facing publication payload plus routing metadata. It stores no credentials, fetched context, repository configuration, prompts, raw AI responses, rejected findings, patches, prices, or suppression content. The frontend is a separate Next.js process boundary and calls protected dashboard endpoints only server-to-server; deployment topology remains undecided.
+The backend is one Spring Boot application with Actuator health, Flyway-managed PostgreSQL state, process-local GitHub authentication, the webhook endpoint, internal ownership, human membership authorization, disabled-by-default local pollers, exact-revision policy/context, AI/suppression, durable publication, and usage accounting. The production Blueprint explicitly enables the two durable pollers and AI. Database locks, constraints, claim tokens, checkpoints, and tenant/month quota locks make old/new deployment overlap safe across processes. PostgreSQL stores no credentials, fetched context, repository configuration, prompts, raw AI responses, rejected findings, patches, prices, or suppression content. The frontend remains a separate Next.js process and calls protected dashboard endpoints only server-to-server.
 
 ## Decision records
 

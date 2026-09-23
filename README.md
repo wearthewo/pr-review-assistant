@@ -1,6 +1,6 @@
 # Pull Request Review Assistant
 
-> Project status: **pre-alpha**. M19 adds reproducible GitHub Actions verification for the accepted M0-M18 system; deployment infrastructure, review details, settings, billing, and repository mutation remain unimplemented.
+> Project status: **pre-alpha**. M20 defines a reproducible Render deployment foundation for the accepted M0-M19 system; no production resource has been created by this repository change.
 
 Pull Request Review Assistant is a planned production-grade, multi-tenant GitHub App that will automatically review pull requests. It will combine deterministic analysis with AI-assisted analysis, validate and rank candidate findings, and publish a small set of high-confidence review comments back to GitHub.
 
@@ -38,11 +38,12 @@ The backend currently uses Java 21, Spring Boot 4.1.1, Maven Wrapper 3.3.4 with 
 ## Repository layout
 
 ```text
-backend/     Spring Boot foundation; future API and review worker
-frontend/    Next.js App Router foundation; future authenticated administration UI
-infra/       Local PostgreSQL Compose definition; future deployment definitions
+backend/     Spring Boot API/workers and production container definition
+frontend/    Next.js App Router dashboard and production container definition
+infra/       Local PostgreSQL Compose definition
 docs/        Product, architecture, security, testing, and development documentation
 docs/adr/    Accepted architecture decision records
+render.yaml  Render Blueprint for two web services and managed PostgreSQL
 ```
 
 Root policy and contributor files apply across the monorepo. Directory READMEs describe current scope and ownership without creating placeholder applications.
@@ -67,6 +68,7 @@ Root policy and contributor files apply across the monorepo. Directory READMEs d
 - [Testing strategy](docs/testing-strategy.md)
 - [Development guide](docs/development.md)
 - [Continuous integration](docs/ci-cd.md)
+- [Production deployment](docs/deployment.md)
 - [Observability](docs/observability.md)
 - [M17 security hardening review](docs/security-hardening.md)
 - [Workflow reliability](docs/reliability.md)
@@ -89,6 +91,8 @@ On Windows PowerShell, use `Copy-Item .env.example .env` and run `mvnw.cmd` from
 After startup, public health, liveness, and readiness endpoints are under `http://localhost:8080/actuator/health`; Prometheus-format metrics at `/actuator/prometheus` require authentication. `POST http://localhost:8080/api/webhooks/github` is the GitHub boundary and authenticates requests with `X-Hub-Signature-256`. See [docs/development.md](docs/development.md) and [docs/observability.md](docs/observability.md) for configuration, inspection, test, and shutdown commands.
 
 ## Current milestone
+
+M20 adds multi-stage non-root backend and frontend images, a root Render Blueprint, a production Spring profile, Render-generated PostgreSQL binding with required internal TLS, health/graceful-shutdown policy, and a fourth blocking-candidate `Docker` CI job. The intended first topology is two paid, non-sleeping Render web services plus one private Render PostgreSQL 18 instance in Frankfurt. The backend service initially owns both APIs and durable workers. Provisioning, provider registration, secret upload, custom domains, monitoring infrastructure, and any live deployment remain operator actions; see [docs/deployment.md](docs/deployment.md).
 
 M19 establishes the repository's build-verification contract. GitHub Actions runs independent `Backend`, `Frontend`, and `E2E` Linux jobs for pull requests to `main`, pushes to `main`, and manual diagnostics. The workflow uses Java 21 plus the checksum-pinned Maven Wrapper, Node 24/npm 11 plus the committed lockfile, PostgreSQL 18.6 Testcontainers, blocking dependency audits, and failure-only bounded Playwright diagnostics. It has read-only repository permissions, receives no product secrets, and performs no deployment or artifact publication. See [docs/ci-cd.md](docs/ci-cd.md).
 

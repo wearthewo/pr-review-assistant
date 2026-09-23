@@ -228,7 +228,9 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 - Review provenance, maintenance, license, and transitive risk before adding a dependency.
 - M19 uses only current GitHub-maintained action release commits pinned by full SHA under a documented review/update process, restricts workflow permissions to read-only contents, disables persisted checkout credentials, and has no release credentials.
 - CI installs Maven through the checksum-pinned repository wrapper, Node 24 through the official setup action, the declared npm 11.19.1 tool, and frontend dependencies through `npm ci`; production and full npm audits are blocking.
-- Dependency caches are lock/descriptor keyed and contain no compiled application output. No workflow publishes application artifacts, images, packages, or deployments.
+- Dependency caches are lock/descriptor keyed and contain no compiled application output. No workflow publishes application artifacts, images, packages, or deployments. M20 adds a blocking-candidate image build only; registry and deploy credentials remain absent.
+- Production images use exact Java/Node build versions, a digest-pinned shell-free backend runtime, minimal Next.js standalone output, non-root users, and secret-excluding build contexts.
+- Render receives credentials only through generated database references, `sync: false` values, a generated Auth0 session secret, or the backend secret-file mount. No production secret is a Docker build argument or image layer.
 - Run dependency, secret, static, and artifact scanning appropriate to the implementation, and address findings according to risk.
 - Build from reproducible definitions, produce an inventory of shipped components when delivery begins, and keep build and runtime identities separate.
 - Do not run untrusted pull request code in privileged CI contexts or expose secrets to workflows triggered from forks.
@@ -241,3 +243,11 @@ Large source is never represented by an arbitrary leading fragment. Only a uniqu
 - Provider failure must not corrupt durable job state, cross tenant boundaries, leak content, or cause unbounded retries.
 
 See [threat-model.md](threat-model.md) for threat scenarios and [testing-strategy.md](testing-strategy.md) for required regression coverage.
+
+## Production deployment boundary
+
+Render terminates public TLS. The frontend origin, backend origin, Auth0 registration, GitHub OAuth callback, and webhook URL must all be explicit HTTPS values. The browser still never calls Spring with a bearer token; broad CORS remains disabled. PostgreSQL is reached only over Render's same-region internal address with `sslmode=require`, and its public IP allowlist is empty.
+
+The GitHub App private key is a Render secret file at a fixed path, never YAML or an ordinary variable. Production startup parses the key and rejects incomplete dashboard/GitHub authorization configuration without echoing values. Database credentials are not embedded in the derived JDBC URL or logged. Health responses hide details and do not probe external providers; Prometheus remains authenticated.
+
+Deployment overlap does not relax job authority: locks choose work, leases recover it, claim tokens reject stale transitions, and durable idempotency/checkpoint boundaries constrain side effects. Flyway startup requires expand/migrate/contract compatibility with the old instance. The initial generated PostgreSQL role performs both migrations and runtime queries; separating those privileges is a documented hardening item, not a reason to grant superuser access. See [deployment.md](deployment.md).
