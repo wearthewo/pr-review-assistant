@@ -40,6 +40,7 @@ import {
   dashboardPathForConnectionResult,
   isTrustedMutationRequest,
   parseGitHubCallback,
+  redirectToGitHubAuthorization,
   validateCallbackValue,
   validateGitHubAuthorizationUrl,
 } from "@/lib/github-connection-core";
@@ -71,7 +72,16 @@ test("production CSP remains strict and nonce based", () => {
   assert.match(policy, /script-src 'self' 'nonce-fixed-test-nonce' 'strict-dynamic'/);
   assert.match(policy, /object-src 'none'/);
   assert.match(policy, /frame-ancestors 'none'/);
+  assert.match(policy, /form-action 'self'(?:;|$)/);
+  assert.doesNotMatch(policy, /form-action[^;]*https:\/\//);
+  assert.doesNotMatch(policy, /form-action[^;]*\*/);
   assert.doesNotMatch(policy, /'unsafe-inline'|'unsafe-eval'/);
+});
+
+test("dashboard CSP narrowly allows the validated GitHub authorization redirect", () => {
+  const policy = buildContentSecurityPolicy("fixed-test-nonce", false, true);
+  assert.match(policy, /form-action 'self' https:\/\/github\.com(?:;|$)/);
+  assert.doesNotMatch(policy, /form-action[^;]*\*/);
 });
 
 test("development CSP permits tooling eval without permitting inline scripts", () => {
@@ -94,7 +104,9 @@ test("authenticated proxy attaches nonce and security headers", async () => {
     return NextResponse.next();
   });
   assert.ok(forwardedNonce);
-  assert.match(response.headers.get("Content-Security-Policy") ?? "", /'nonce-[A-Za-z0-9+/=]+'/);
+  const policy = response.headers.get("Content-Security-Policy") ?? "";
+  assert.match(policy, /'nonce-[A-Za-z0-9+/=]+'/);
+  assert.match(policy, /form-action 'self' https:\/\/github\.com(?:;|$)/);
   assert.equal(response.headers.get("X-Content-Type-Options"), "nosniff");
 });
 
@@ -246,6 +258,7 @@ test("membership-less state is explicit and never fabricates a tenant", () => {
     applicationUserId: USER_ID, memberships: [], onboardingRequired: true }} />);
   assert.match(html, /Connect your GitHub workspace next/);
   assert.match(html, /action="\/github\/connect"/);
+  assert.doesNotMatch(html, /action="https?:\/\//);
   assert.match(html, /GitHub authorization verifies eligible personal installations server-side/);
   assert.doesNotMatch(html, /Workspace [0-9A-F]{8}|OWNER|MEMBER/);
 });
@@ -262,8 +275,12 @@ test("GitHub connection mutation requires same-origin browser proof", () => {
 });
 
 test("GitHub authorization and callback redirects are constrained", () => {
-  assert.equal(validateGitHubAuthorizationUrl(
-    "https://github.com/login/oauth/authorize?client_id=x&state=y", "https://github.com").hostname, "github.com");
+  const destination = validateGitHubAuthorizationUrl(
+    "https://github.com/login/oauth/authorize?client_id=x&state=y", "https://github.com");
+  assert.equal(destination.hostname, "github.com");
+  const redirect = redirectToGitHubAuthorization(destination);
+  assert.equal(redirect.status, 303);
+  assert.equal(redirect.headers.get("location"), destination.href);
   assert.throws(() => validateGitHubAuthorizationUrl(
     "https://attacker.example/login/oauth/authorize", "https://github.com"), /not trusted/);
   assert.throws(() => validateGitHubAuthorizationUrl(

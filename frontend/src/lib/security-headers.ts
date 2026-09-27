@@ -5,7 +5,11 @@ export const BASE_SECURITY_HEADERS = {
   "X-Frame-Options": "DENY",
 } as const;
 
-export function buildContentSecurityPolicy(nonce: string, development: boolean): string {
+export function buildContentSecurityPolicy(
+  nonce: string,
+  development: boolean,
+  allowGitHubAuthorizationRedirect = false,
+): string {
   const scriptSources = ["'self'", `'nonce-${nonce}'`, "'strict-dynamic'"];
   if (development) {
     scriptSources.push("'unsafe-eval'");
@@ -20,7 +24,7 @@ export function buildContentSecurityPolicy(nonce: string, development: boolean):
     development ? "connect-src 'self' ws: wss:" : "connect-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self'",
+    `form-action 'self'${allowGitHubAuthorizationRedirect ? " https://github.com" : ""}`,
     "frame-ancestors 'none'",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
