@@ -2,6 +2,7 @@ package io.prreviewassistant.dashboard;
 
 import io.prreviewassistant.identity.AuthenticatedUserIdentity;
 import io.prreviewassistant.identity.DashboardSession;
+import io.prreviewassistant.identity.DashboardSessionFailureException;
 import io.prreviewassistant.identity.TenantAuthorizationService;
 import io.prreviewassistant.identity.TenantMembershipRole;
 import java.util.List;
@@ -24,12 +25,23 @@ public class DashboardSessionController {
 
     @GetMapping("/session")
     public DashboardSessionResponse session(@AuthenticationPrincipal Jwt jwt) {
-        DashboardSession session = authorizationService.session(new AuthenticatedUserIdentity(
-                jwt.getIssuer().toString(), jwt.getSubject()));
-        List<MembershipResponse> memberships = session.memberships().stream()
-                .map(membership -> new MembershipResponse(membership.tenantId(), membership.role()))
-                .toList();
-        return new DashboardSessionResponse(session.user().id(), memberships, session.onboardingRequired());
+        AuthenticatedUserIdentity identity;
+        try {
+            identity = new AuthenticatedUserIdentity(jwt.getIssuer().toString(), jwt.getSubject());
+        } catch (RuntimeException exception) {
+            throw new DashboardSessionFailureException(
+                    DashboardSessionFailureException.Stage.IDENTITY_MAPPING, exception);
+        }
+        DashboardSession session = authorizationService.session(identity);
+        try {
+            List<MembershipResponse> memberships = session.memberships().stream()
+                    .map(membership -> new MembershipResponse(membership.tenantId(), membership.role()))
+                    .toList();
+            return new DashboardSessionResponse(session.user().id(), memberships, session.onboardingRequired());
+        } catch (RuntimeException exception) {
+            throw new DashboardSessionFailureException(
+                    DashboardSessionFailureException.Stage.RESPONSE_MAPPING, exception);
+        }
     }
 
     public record DashboardSessionResponse(
