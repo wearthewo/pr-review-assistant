@@ -43,6 +43,7 @@ dashboard:
     audience: ${DASHBOARD_AUTH_AUDIENCE:}
     jwk-set-uri: ${DASHBOARD_AUTH_JWK_SET_URI:}
   github-connection:
+    app-id: ${GITHUB_APP_ID}
     client-id: ${GITHUB_OAUTH_CLIENT_ID:}
     client-secret: ${GITHUB_OAUTH_CLIENT_SECRET:}
     callback-url: ${GITHUB_OAUTH_CALLBACK_URL:}

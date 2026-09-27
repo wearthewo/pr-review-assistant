@@ -41,7 +41,7 @@ Owns use-case coordination, authorization, tenant context, and transaction bound
 
 The dashboard sub-boundary independently validates Auth0 RS256 access JWTs in Spring, maps the trusted issuer/subject pair to an internal application user, and resolves tenant authorization only through durable membership. `AuthorizedTenantContext` can be created only by that membership lookup; a requested tenant UUID identifies a resource but never proves access. GitHub webhook identity remains separate from human identity.
 
-The ownership-bootstrap sub-boundary keeps Auth0 identity and GitHub human identity separate. It uses hashed, expiring, single-use state bound to the application user plus S256 PKCE, exchanges the code server-side, verifies the stable GitHub numeric user ID, and enumerates bounded pages of installations visible to that user. M14 remains the installation-to-tenant authority. Only exact personal-account ownership creates the initial controlled `OWNER`; organization access and multiple candidates fail closed.
+The ownership-bootstrap sub-boundary keeps Auth0 identity and GitHub human identity separate. It uses hashed, expiring, single-use state bound to the application user plus S256 PKCE, exchanges the code server-side, verifies the stable GitHub numeric user ID, and enumerates bounded pages of installations visible to that user. Only an exact configured-App, personal-account match may atomically provision the minimal M14 tenant/installation shell and create the initial controlled `OWNER`; repository rows still require authoritative signed pull-request activity. Organization access and multiple candidates fail closed.
 
 ### PostgreSQL system of record and job queue
 

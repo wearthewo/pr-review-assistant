@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.net.URI;
@@ -25,7 +26,6 @@ import org.junit.jupiter.api.Test;
 class GitHubConnectionServiceTest {
     private static final Instant NOW = Instant.parse("2026-09-16T10:00:00Z");
     private static final UUID USER_ID = UUID.fromString("6e2b4c5d-32fd-4a7a-9dcb-3dc7e6271f05");
-    private static final UUID TENANT_ID = UUID.fromString("26f8a101-14d7-49d3-9ad5-122374f41741");
     private static final AuthenticatedUserIdentity IDENTITY =
             new AuthenticatedUserIdentity("https://issuer.example/", "subject");
 
@@ -55,12 +55,11 @@ class GitHubConnectionServiceTest {
     }
 
     @Test
-    void exactVerifiedPersonalInstallationBindsOwner() {
+    void exactVerifiedPersonalInstallationProvisionsMappingAndBindsOwner() {
         states.allow("expected-state", USER_ID, "v".repeat(43));
         when(client.verify("code", "v".repeat(43))).thenReturn(new GitHubConnectionProof(77,
-                List.of(new GitHubConnectionProof.AccessibleInstallation(123, 77, "User", "User"))));
-        when(ownership.findTenantForInstallation(123)).thenReturn(Optional.of(TENANT_ID));
-        when(ownership.bindOwner(TENANT_ID, USER_ID, NOW))
+                List.of(new GitHubConnectionProof.AccessibleInstallation(123, 1, 77, "User", "User"))));
+        when(ownership.provisionPersonalInstallationOwner(123, USER_ID, NOW))
                 .thenReturn(GitHubOwnershipBootstrapStore.MembershipBindingResult.CREATED);
 
         assertThat(service.complete(IDENTITY, "code", "expected-state"))
@@ -71,22 +70,31 @@ class GitHubConnectionServiceTest {
     void organizationAccessAndArbitraryInstallationsCannotCreateOwner() {
         states.allow("state", USER_ID, "v".repeat(43));
         when(client.verify(any(), any())).thenReturn(new GitHubConnectionProof(77, List.of(
-                new GitHubConnectionProof.AccessibleInstallation(123, 88, "Organization", "Organization"),
-                new GitHubConnectionProof.AccessibleInstallation(999, 77, "User", "User"))));
-        when(ownership.findTenantForInstallation(999)).thenReturn(Optional.empty());
+                new GitHubConnectionProof.AccessibleInstallation(123, 1, 88, "Organization", "Organization"),
+                new GitHubConnectionProof.AccessibleInstallation(999, 2, 77, "User", "User"))));
 
         assertThat(service.complete(IDENTITY, "code", "state"))
                 .isEqualTo(GitHubConnectionService.ConnectionResult.NO_ELIGIBLE_INSTALLATION);
+        verifyNoInteractions(ownership);
+    }
+
+    @Test
+    void installationForDifferentConfiguredAppCannotCreateOwner() {
+        states.allow("state", USER_ID, "v".repeat(43));
+        when(client.verify(any(), any())).thenReturn(new GitHubConnectionProof(77, List.of(
+                new GitHubConnectionProof.AccessibleInstallation(123, 2, 77, "User", "User"))));
+
+        assertThat(service.complete(IDENTITY, "code", "state"))
+                .isEqualTo(GitHubConnectionService.ConnectionResult.NO_ELIGIBLE_INSTALLATION);
+        verifyNoInteractions(ownership);
     }
 
     @Test
     void multipleVerifiedMatchingInstallationsFailClosedEvenWhenTheyMapToOneTenant() {
         states.allow("state", USER_ID, "v".repeat(43));
         when(client.verify(any(), any())).thenReturn(new GitHubConnectionProof(77, List.of(
-                new GitHubConnectionProof.AccessibleInstallation(123, 77, "User", "User"),
-                new GitHubConnectionProof.AccessibleInstallation(124, 77, "User", "User"))));
-        when(ownership.findTenantForInstallation(123)).thenReturn(Optional.of(TENANT_ID));
-        when(ownership.findTenantForInstallation(124)).thenReturn(Optional.of(TENANT_ID));
+                new GitHubConnectionProof.AccessibleInstallation(123, 1, 77, "User", "User"),
+                new GitHubConnectionProof.AccessibleInstallation(124, 1, 77, "User", "User"))));
 
         assertThat(service.complete(IDENTITY, "code", "state"))
                 .isEqualTo(GitHubConnectionService.ConnectionResult.MULTIPLE_INSTALLATIONS_UNSUPPORTED);
@@ -96,15 +104,14 @@ class GitHubConnectionServiceTest {
     void existingMembershipIsIdempotentAndOwnershipConflictFailsClosed() {
         states.allow("first", USER_ID, "v".repeat(43));
         when(client.verify(any(), any())).thenReturn(new GitHubConnectionProof(77,
-                List.of(new GitHubConnectionProof.AccessibleInstallation(123, 77, "User", "User"))));
-        when(ownership.findTenantForInstallation(123)).thenReturn(Optional.of(TENANT_ID));
-        when(ownership.bindOwner(TENANT_ID, USER_ID, NOW))
+                List.of(new GitHubConnectionProof.AccessibleInstallation(123, 1, 77, "User", "User"))));
+        when(ownership.provisionPersonalInstallationOwner(123, USER_ID, NOW))
                 .thenReturn(GitHubOwnershipBootstrapStore.MembershipBindingResult.ALREADY_MEMBER);
         assertThat(service.complete(IDENTITY, "code", "first"))
                 .isEqualTo(GitHubConnectionService.ConnectionResult.ALREADY_CONNECTED);
 
         states.allow("second", USER_ID, "v".repeat(43));
-        when(ownership.bindOwner(TENANT_ID, USER_ID, NOW))
+        when(ownership.provisionPersonalInstallationOwner(123, USER_ID, NOW))
                 .thenReturn(GitHubOwnershipBootstrapStore.MembershipBindingResult.OWNERSHIP_CONFLICT);
         assertThat(service.complete(IDENTITY, "code", "second"))
                 .isEqualTo(GitHubConnectionService.ConnectionResult.OWNERSHIP_CONFLICT);
@@ -129,7 +136,7 @@ class GitHubConnectionServiceTest {
     }
 
     private static GitHubConnectionProperties properties() {
-        return new GitHubConnectionProperties("client-id", "client-secret",
+        return new GitHubConnectionProperties("1", "client-id", "client-secret",
                 URI.create("https://app.example/github/callback"), URI.create("https://github.com"),
                 Duration.ofMinutes(10), 5, 10, 1000, 262144);
     }

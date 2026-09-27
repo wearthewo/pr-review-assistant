@@ -10,15 +10,18 @@ public record GitHubConnectionProof(long userId, List<AccessibleInstallation> in
         installations = List.copyOf(installations);
     }
 
-    public record AccessibleInstallation(long installationId, long accountId, String accountType, String targetType) {
+    public record AccessibleInstallation(
+            long installationId, long appId, long accountId, String accountType, String targetType) {
         public AccessibleInstallation {
-            if (installationId <= 0 || accountId <= 0 || accountType == null || targetType == null) {
+            if (installationId <= 0 || appId <= 0 || accountId <= 0
+                    || accountType == null || targetType == null) {
                 throw new IllegalArgumentException("GitHub installation proof is invalid");
             }
         }
 
-        public boolean isOwnedUserInstallation(long verifiedUserId) {
+        public boolean isOwnedUserInstallation(long verifiedUserId, String expectedAppId) {
             return accountId == verifiedUserId
+                    && Long.toString(appId).equals(expectedAppId)
                     && "User".equalsIgnoreCase(accountType)
                     && "User".equalsIgnoreCase(targetType);
         }

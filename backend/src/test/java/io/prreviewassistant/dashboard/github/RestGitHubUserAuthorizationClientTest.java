@@ -27,7 +27,7 @@ class RestGitHubUserAuthorizationClientTest {
         try (MockServer oauth = new MockServer(); MockServer api = new MockServer()) {
             oauth.enqueue(200, "{\"access_token\":\"secret-user-token\",\"refresh_token\":\"ignored\"}", Map.of());
             api.enqueue(200, "{\"id\":77,\"login\":\"renameable\",\"email\":\"ignored@example.com\"}", Map.of());
-            api.enqueue(200, "{\"installations\":[{\"id\":123,\"target_type\":\"User\",\"account\":{\"id\":77,\"type\":\"User\"}}]}",
+            api.enqueue(200, "{\"installations\":[{\"id\":123,\"app_id\":1,\"target_type\":\"User\",\"account\":{\"id\":77,\"type\":\"User\"}}]}",
                     Map.of("Link", "<https://attacker.example/steal>; rel=\"next\""));
             api.enqueue(200, "{\"installations\":[]}", Map.of());
             GitHubConnectionProof proof = client(oauth, api, 10).verify("one-time-code", "v".repeat(43));
@@ -35,6 +35,8 @@ class RestGitHubUserAuthorizationClientTest {
             assertThat(proof.userId()).isEqualTo(77);
             assertThat(proof.installations()).extracting(GitHubConnectionProof.AccessibleInstallation::installationId)
                     .containsExactly(123L);
+            assertThat(proof.installations()).extracting(GitHubConnectionProof.AccessibleInstallation::appId)
+                    .containsExactly(1L);
             assertThat(oauth.requests().getFirst().path()).isEqualTo("/login/oauth/access_token");
             assertThat(oauth.requests().getFirst().body()).contains("code=one-time-code", "code_verifier=" + "v".repeat(43));
             assertThat(api.requests()).extracting(Request::path).containsExactly(
@@ -121,7 +123,7 @@ class RestGitHubUserAuthorizationClientTest {
 
     private static RestGitHubUserAuthorizationClient client(
             MockServer oauth, MockServer api, int maxPages, int maxResponseBytes) {
-        GitHubConnectionProperties properties = new GitHubConnectionProperties("client", "secret",
+        GitHubConnectionProperties properties = new GitHubConnectionProperties("1", "client", "secret",
                 URI.create("https://app.example/github/callback"), oauth.baseUrl(), Duration.ofMinutes(10),
                 5, maxPages, 1000, maxResponseBytes);
         return new RestGitHubUserAuthorizationClient(rest(oauth.baseUrl()), rest(api.baseUrl()),
