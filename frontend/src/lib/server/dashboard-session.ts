@@ -35,5 +35,10 @@ export async function fetchDashboardSession(
   fetchImplementation: typeof fetch = fetch,
 ): Promise<AuthenticatedDashboardSession> {
   return requestDashboardSession(
-    createBackendUrl("/api/dashboard/session"), token, fetchImplementation);
+    createBackendUrl("/api/dashboard/session"), token, fetchImplementation, (failure) => {
+      console.warn(JSON.stringify({
+        event: "dashboard_backend_request_failed",
+        failure,
+      }));
+    });
 }
