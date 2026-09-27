@@ -21,6 +21,7 @@ export async function secureProxy(
   const contentSecurityPolicy = buildContentSecurityPolicy(
     nonce,
     process.env.NODE_ENV !== "production",
+    request.nextUrl.pathname === "/dashboard",
   );
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
