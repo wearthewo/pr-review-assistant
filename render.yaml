@@ -7,7 +7,7 @@ services:
     runtime: docker
     branch: main
     region: frankfurt
-    plan: 1c-2g
+    plan: free
     numInstances: 1
     dockerContext: ./backend
     dockerfilePath: ./backend/Dockerfile
@@ -75,7 +75,7 @@ services:
     runtime: docker
     branch: main
     region: frankfurt
-    plan: 0.5c-512mb
+    plan: free
     numInstances: 1
     dockerContext: ./frontend
     dockerfilePath: ./frontend/Dockerfile
@@ -107,11 +107,10 @@ services:
 databases:
   - name: pr-review-assistant-db
     region: frankfurt
-    plan: 0.5c-1g
+    plan: free
     postgresMajorVersion: "18"
     databaseName: pr_review_assistant
     user: pr_review_assistant
-    diskSizeGB: 15
     storageAutoscalingEnabled: false
     connectionPool: none
     ipAllowList: []
