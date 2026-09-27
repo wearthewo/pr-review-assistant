@@ -13,7 +13,6 @@ services:
     dockerfilePath: ./backend/Dockerfile
     autoDeployTrigger: checksPass
     healthCheckPath: /actuator/health/readiness
-    maxShutdownDelaySeconds: 120
     buildFilter:
       paths:
         - backend/**
@@ -81,7 +80,6 @@ services:
     dockerfilePath: ./frontend/Dockerfile
     autoDeployTrigger: checksPass
     healthCheckPath: /
-    maxShutdownDelaySeconds: 30
     buildFilter:
       paths:
         - frontend/**
