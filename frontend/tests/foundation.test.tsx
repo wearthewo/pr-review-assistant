@@ -128,6 +128,8 @@ test("production backend origin is required, HTTPS, and credential free", () => 
   assert.throws(() => resolveBackendOrigin("http://backend.example", "production"), /HTTPS/);
   assert.throws(() => resolveBackendOrigin("https://user:pass@backend.example", "production"), /credentials/);
   assert.equal(resolveBackendOrigin("https://backend.example", "production"), "https://backend.example");
+  assert.equal(resolveBackendOrigin("https://pr-review-assistant-backend.onrender.com", "production"),
+    "https://pr-review-assistant-backend.onrender.com");
 });
 
 test("safe local backend origin exists only outside production", () => {
@@ -666,6 +668,32 @@ test("backend timeout, malformed response, and auth failure become bounded UI st
   assert.match(renderToStaticMarkup(<DashboardView state={malformed} />), /invalid response/);
   assert.match(renderToStaticMarkup(<DashboardView state={authorization} />), /could not be authorized/);
   assert.match(renderToStaticMarkup(<DashboardView state={unavailable} />), /temporarily unavailable/);
+});
+
+test("unexpected authentication and framework failures are not mislabeled as backend outages", async () => {
+  const tokenFailure = new Error("synthetic Auth0 failure");
+  await assert.rejects(loadDashboardStateWith({
+    hasSession: async () => true,
+    accessToken: async () => { throw tokenFailure; },
+  }, async () => { throw new Error("must not run"); }), (error) => error === tokenFailure);
+
+  const frameworkFailure = new Error("synthetic framework failure");
+  await assert.rejects(loadDashboardStateWith({
+    hasSession: async () => true,
+    accessToken: async () => "server-token",
+  }, async () => { throw frameworkFailure; }), (error) => error === frameworkFailure);
+});
+
+test("dashboard retry is ordinary navigation and never a Server Action", () => {
+  const html = renderToStaticMarkup(<DashboardView state={{
+    status: "error", kind: "BACKEND_UNAVAILABLE",
+  }} />);
+  assert.match(html, /href="\/dashboard"[^>]*>Try again<\/a>/);
+  assert.doesNotMatch(html, /<form|\$ACTION_|formAction/);
+
+  const dashboardSource = readFileSync(
+    join(frontendRoot, "src/components/dashboard-view.tsx"), "utf8");
+  assert.doesNotMatch(dashboardSource, /use server|formAction/);
 });
 
 test("network timeout classification does not expose request credentials", async () => {

@@ -54,6 +54,8 @@ Review pagination uses ordinary GET navigation with a tenant identifier and boun
 
 All four server-side dashboard clients use a shared streaming response reader. It checks declared lengths, counts each received byte chunk, cancels an over-limit stream, and decodes only a bounded complete UTF-8 body. Current ceilings are 64 KiB for session, 128 KiB for repositories, 192 KiB for reviews, and 32 KiB for usage.
 
+Known dashboard session failures emit only the controlled `dashboard_session_load_failed` event and failure category. Unexpected Auth0, configuration, or framework exceptions are not relabeled as backend outages; they propagate to the Next.js production error boundary and server logs while the browser continues to receive a detail-free error page. Tokens, cookies, backend bodies, exception messages, and auth claims are never included in the controlled dashboard event.
+
 `npm run test:e2e` builds and starts the real Next.js application on a fixed local port and runs Chromium at desktop and Pixel 7 viewports. Real unauthenticated routes, CSP, security headers, and CSRF behavior are exercised directly. Authenticated presentation states use a separate test-only rendering process built from the production components; it has no production route, flag, or auth bypass. Spring membership and tenant-resource enforcement are exercised by the backend PostgreSQL integration suite. A real Auth0/GitHub smoke test is intentionally deferred to the deployment/provider phase.
 
 ## Production image and runtime
