@@ -1,4 +1,4 @@
-import { isTrustedMutationRequest } from "@/lib/github-connection-core";
+import { isTrustedMutationRequest, redirectToGitHubAuthorization } from "@/lib/github-connection-core";
 import { applicationOrigin, beginGitHubConnection } from "@/lib/server/github-connection";
 
 export async function POST(request: Request) {
@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   try {
     const destination = await beginGitHubConnection();
     if (destination === null) return new Response(null, { status: 401 });
-    return Response.redirect(destination, 303);
+    return redirectToGitHubAuthorization(destination);
   } catch {
     return Response.redirect(new URL("/dashboard?connection=failed", applicationOrigin()), 303);
   }

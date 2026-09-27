@@ -25,6 +25,10 @@ export function validateGitHubAuthorizationUrl(value: unknown, expectedOrigin: s
   return url;
 }
 
+export function redirectToGitHubAuthorization(destination: URL): Response {
+  return Response.redirect(destination, 303);
+}
+
 export function validateCallbackValue(value: string | null): string {
   if (!value || value.length > MAX_CALLBACK_VALUE_LENGTH || /[\u0000-\u001f\u007f]/.test(value)) {
     throw new Error("GitHub callback input is invalid");
