@@ -65,9 +65,12 @@ export async function loadDashboardStateWith(
   try {
     return await requestSession(await authentication.accessToken());
   } catch (error) {
+    if (!(error instanceof DashboardSessionError)) {
+      throw error;
+    }
     return {
       status: "error",
-      kind: error instanceof DashboardSessionError ? error.kind : "BACKEND_UNAVAILABLE",
+      kind: error.kind,
     };
   }
 }

@@ -17,10 +17,17 @@ export async function loadDashboardState(
   authentication: ServerAuthClient = auth0,
   requestSession: (token: string) => Promise<AuthenticatedDashboardSession> = fetchDashboardSession,
 ): Promise<DashboardState> {
-  return loadDashboardStateWith({
+  const state = await loadDashboardStateWith({
     hasSession: async () => (await authentication.getSession()) !== null,
     accessToken: async () => (await authentication.getAccessToken()).token,
   }, requestSession);
+  if (state.status === "error") {
+    console.warn(JSON.stringify({
+      event: "dashboard_session_load_failed",
+      failure: state.kind,
+    }));
+  }
+  return state;
 }
 
 export async function fetchDashboardSession(
