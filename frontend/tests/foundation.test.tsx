@@ -201,6 +201,46 @@ test("backend failures never expose response bodies or bearer tokens", async () 
   );
 });
 
+test("dashboard backend diagnostics distinguish bounded failure classes", async () => {
+  const url = new URL("https://backend.example/api/dashboard/session");
+  const cases: readonly [
+    fetchImplementation: typeof fetch,
+    expected: string,
+  ][] = [
+    [async () => { throw new TypeError("connect failed"); }, "NETWORK_ERROR"],
+    [async () => { throw new DOMException("timed out", "TimeoutError"); }, "TIMEOUT"],
+    [async () => new Response(null, { status: 401 }), "HTTP_401"],
+    [async () => new Response(null, { status: 403 }), "HTTP_403"],
+    [async () => new Response(null, { status: 422 }), "HTTP_4XX"],
+    [async () => new Response(null, { status: 503 }), "HTTP_5XX"],
+    [async () => new Response("not-json", { status: 200 }), "MALFORMED_RESPONSE"],
+  ];
+
+  for (const [fetchImplementation, expected] of cases) {
+    const diagnostics: string[] = [];
+    await assert.rejects(requestDashboardSession(url, "server-only-token", fetchImplementation,
+      (failure) => diagnostics.push(failure)));
+    assert.deepEqual(diagnostics, [expected]);
+  }
+});
+
+test("dashboard backend diagnostics never contain credentials or backend content", async () => {
+  const token = "server-only-diagnostic-token";
+  const backendBody = "sensitive-backend-response";
+  const diagnostics: string[] = [];
+
+  await assert.rejects(requestDashboardSession(
+    new URL("https://backend.example/api/dashboard/session"), token,
+    async () => new Response(backendBody, { status: 500 }),
+    (failure) => diagnostics.push(JSON.stringify({ event: "dashboard_backend_request_failed", failure })),
+  ));
+
+  assert.deepEqual(diagnostics, [JSON.stringify({
+    event: "dashboard_backend_request_failed", failure: "HTTP_5XX",
+  })]);
+  assert.doesNotMatch(diagnostics[0] ?? "", new RegExp(`${token}|${backendBody}`));
+});
+
 test("membership-less state is explicit and never fabricates a tenant", () => {
   const html = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
     applicationUserId: USER_ID, memberships: [], onboardingRequired: true }} />);

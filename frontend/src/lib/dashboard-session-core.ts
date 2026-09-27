@@ -29,6 +29,17 @@ export type DashboardFailureKind =
   | "BACKEND_UNAVAILABLE"
   | "SESSION_UNAVAILABLE";
 
+export type DashboardBackendFailure =
+  | "NETWORK_ERROR"
+  | "TIMEOUT"
+  | "HTTP_401"
+  | "HTTP_403"
+  | "HTTP_4XX"
+  | "HTTP_5XX"
+  | "MALFORMED_RESPONSE";
+
+export type DashboardBackendFailureReporter = (failure: DashboardBackendFailure) => void;
+
 export interface FailedDashboardSession {
   status: "error";
   kind: DashboardFailureKind;
@@ -79,6 +90,7 @@ export async function requestDashboardSession(
   url: URL,
   token: string,
   fetchImplementation: typeof fetch,
+  reportFailure: DashboardBackendFailureReporter = () => undefined,
 ): Promise<AuthenticatedDashboardSession> {
   if (!token) {
     throw new DashboardSessionError("SESSION_UNAVAILABLE");
@@ -97,26 +109,41 @@ export async function requestDashboardSession(
     });
   } catch (error) {
     if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      reportFailure("TIMEOUT");
       throw new DashboardSessionError("BACKEND_TIMEOUT");
     }
+    reportFailure("NETWORK_ERROR");
     throw new DashboardSessionError("BACKEND_UNAVAILABLE");
   }
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
+    reportFailure("HTTP_401");
+    throw new DashboardSessionError("AUTHORIZATION_FAILED");
+  }
+  if (response.status === 403) {
+    reportFailure("HTTP_403");
     throw new DashboardSessionError("AUTHORIZATION_FAILED");
   }
   if (!response.ok) {
+    reportFailure(response.status >= 500 ? "HTTP_5XX" : "HTTP_4XX");
     throw new DashboardSessionError("BACKEND_UNAVAILABLE");
   }
-  const body = await readBoundedResponseBody(response, MAX_RESPONSE_BYTES,
-    () => new DashboardSessionError("BACKEND_RESPONSE_INVALID"));
-
-  let value: unknown;
   try {
-    value = JSON.parse(body);
-  } catch {
-    throw new DashboardSessionError("BACKEND_RESPONSE_INVALID");
+    const body = await readBoundedResponseBody(response, MAX_RESPONSE_BYTES,
+      () => new DashboardSessionError("BACKEND_RESPONSE_INVALID"));
+
+    let value: unknown;
+    try {
+      value = JSON.parse(body);
+    } catch {
+      throw new DashboardSessionError("BACKEND_RESPONSE_INVALID");
+    }
+    return validateSession(value);
+  } catch (error) {
+    if (error instanceof DashboardSessionError && error.kind === "BACKEND_RESPONSE_INVALID") {
+      reportFailure("MALFORMED_RESPONSE");
+    }
+    throw error;
   }
-  return validateSession(value);
 }
 
 function validateSession(value: unknown): AuthenticatedDashboardSession {
