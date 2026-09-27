@@ -58,6 +58,12 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5.6-terra
+      - key: OPENAI_REASONING_EFFORT
+        value: low
+      - key: OPENAI_MAX_OUTPUT_TOKENS
+        value: "2048"  
       - key: REVIEW_WORKER_ENABLED
         value: "true"
       - key: REVIEW_WORKER_LEASE_DURATION
@@ -68,6 +74,8 @@ services:
         value: 3m
       - key: REVIEW_AI_ENABLED
         value: "true"
+      - key: REVIEW_USAGE_MONTHLY_LIMIT
+        value: "50"
 
   - type: web
     name: pr-review-assistant-frontend
