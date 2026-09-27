@@ -119,17 +119,19 @@ final class RestGitHubUserAuthorizationClient implements GitHubUserAuthorization
             for (JsonNode entry : entries) {
                 JsonNode account = entry.get("account");
                 long installationId = positiveLong(entry.get("id"));
+                long appId = positiveLong(entry.get("app_id"));
                 long accountId = account == null ? -1 : positiveLong(account.get("id"));
                 String accountType = account == null ? null : text(account, "type", 32);
                 String targetType = text(entry, "target_type", 32);
-                if (installationId <= 0 || accountId <= 0 || accountType == null || targetType == null) {
+                if (installationId <= 0 || appId <= 0 || accountId <= 0
+                        || accountType == null || targetType == null) {
                     throw new GitHubConnectionException(GitHubConnectionError.GITHUB_RESPONSE_INVALID);
                 }
                 if (result.size() >= properties.maxInstallations()) {
                     throw new GitHubConnectionException(GitHubConnectionError.TOO_MANY_INSTALLATIONS);
                 }
                 result.add(new GitHubConnectionProof.AccessibleInstallation(
-                        installationId, accountId, accountType, targetType));
+                        installationId, appId, accountId, accountType, targetType));
             }
             hasNext = response.hasNext();
             if (hasNext && page == properties.maxPages()) {

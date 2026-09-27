@@ -16,7 +16,7 @@ class GitHubConnectionPropertiesTest {
     }
 
     private static GitHubConnectionProperties properties(int activeStates) {
-        return new GitHubConnectionProperties("client", "secret",
+        return new GitHubConnectionProperties("1", "client", "secret",
                 URI.create("https://app.example/github/callback"), URI.create("https://github.com"),
                 Duration.ofMinutes(10), activeStates, 10, 1000, 262144);
     }

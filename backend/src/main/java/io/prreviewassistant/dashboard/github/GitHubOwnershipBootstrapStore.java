@@ -9,5 +9,8 @@ public interface GitHubOwnershipBootstrapStore {
 
     MembershipBindingResult bindOwner(UUID tenantId, UUID applicationUserId, Instant now);
 
+    MembershipBindingResult provisionPersonalInstallationOwner(
+            long githubInstallationId, UUID applicationUserId, Instant now);
+
     enum MembershipBindingResult { CREATED, ALREADY_MEMBER, OWNERSHIP_CONFLICT }
 }

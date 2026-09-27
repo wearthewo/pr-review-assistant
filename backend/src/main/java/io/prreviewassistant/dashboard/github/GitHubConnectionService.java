@@ -11,7 +11,6 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 
 import io.prreviewassistant.identity.ApplicationIdentityStore;
 import io.prreviewassistant.identity.ApplicationUser;
@@ -90,12 +89,10 @@ public class GitHubConnectionService {
                 .orElseThrow(() -> new GitHubConnectionException(GitHubConnectionError.INVALID_STATE));
         GitHubConnectionProof proof = client.verify(code, verifier);
 
-        List<UUID> candidates = new ArrayList<>(2);
+        List<GitHubConnectionProof.AccessibleInstallation> candidates = new ArrayList<>(2);
         for (GitHubConnectionProof.AccessibleInstallation installation : proof.installations()) {
-            if (installation.isOwnedUserInstallation(proof.userId())) {
-                ownership.findTenantForInstallation(installation.installationId()).ifPresent(tenantId -> {
-                    candidates.add(tenantId);
-                });
+            if (installation.isOwnedUserInstallation(proof.userId(), properties.appId())) {
+                candidates.add(installation);
             }
             if (candidates.size() > 1) {
                 return ConnectionResult.MULTIPLE_INSTALLATIONS_UNSUPPORTED;
@@ -104,7 +101,8 @@ public class GitHubConnectionService {
         if (candidates.isEmpty()) {
             return ConnectionResult.NO_ELIGIBLE_INSTALLATION;
         }
-        return switch (ownership.bindOwner(candidates.getFirst(), user.id(), now)) {
+        return switch (ownership.provisionPersonalInstallationOwner(
+                candidates.getFirst().installationId(), user.id(), now)) {
             case CREATED -> ConnectionResult.CONNECTED;
             case ALREADY_MEMBER -> ConnectionResult.ALREADY_CONNECTED;
             case OWNERSHIP_CONFLICT -> ConnectionResult.OWNERSHIP_CONFLICT;

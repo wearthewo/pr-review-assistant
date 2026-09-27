@@ -15,7 +15,8 @@ import org.springframework.web.client.RestClient;
 class GitHubInstallationTokenClientTest {
 
     private static final String APP_JWT = "synthetic-app-jwt-secret";
-    private static final String INSTALLATION_TOKEN = "opaque-token-with-no-assumed-shape";
+    private static final String INSTALLATION_TOKEN =
+            "ghs_1_" + "a".repeat(250) + "." + "b".repeat(120) + "." + "c".repeat(140);
 
     @Test
     void requestsAndMapsInstallationTokenWithRequiredHeaders() throws Exception {

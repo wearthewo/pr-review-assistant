@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("dashboard.github-connection")
 public record GitHubConnectionProperties(
+        String appId,
         String clientId,
         String clientSecret,
         URI callbackUrl,
@@ -18,6 +19,7 @@ public record GitHubConnectionProperties(
         int maxResponseBytes) {
 
     public GitHubConnectionProperties {
+        appId = normalize(appId);
         clientId = normalize(clientId);
         clientSecret = normalize(clientSecret);
         if (oauthBaseUrl == null) {
@@ -39,7 +41,7 @@ public record GitHubConnectionProperties(
     }
 
     public boolean configured() {
-        return clientId != null && clientSecret != null && callbackUrl != null;
+        return appId != null && clientId != null && clientSecret != null && callbackUrl != null;
     }
 
     @Override

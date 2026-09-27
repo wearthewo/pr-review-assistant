@@ -42,7 +42,7 @@ class ProductionConfigurationValidatorTest {
     }
 
     private static GitHubConnectionProperties configuredGitHubConnection() {
-        return new GitHubConnectionProperties(
+        return new GitHubConnectionProperties("1",
                 "client-id", "client-secret", URI.create("https://app.example.com/github/callback"),
                 URI.create("https://github.com"), Duration.ofMinutes(10), 5, 10, 1000, 262144);
     }

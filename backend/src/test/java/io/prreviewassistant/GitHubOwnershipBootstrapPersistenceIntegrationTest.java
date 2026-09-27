@@ -86,6 +86,24 @@ class GitHubOwnershipBootstrapPersistenceIntegrationTest {
     }
 
     @Test
+    void verifiedPersonalInstallationCreatesOnlyTenantInstallationAndOwner() {
+        ApplicationUser user = user("new-installation-owner");
+
+        assertThat(bootstrap.provisionPersonalInstallationOwner(987, user.id(), NOW))
+                .isEqualTo(GitHubOwnershipBootstrapStore.MembershipBindingResult.CREATED);
+        UUID tenantId = bootstrap.findTenantForInstallation(987).orElseThrow();
+
+        assertThat(jdbc.sql("SELECT count(*) FROM tenants WHERE id = :id")
+                .param("id", tenantId).query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM github_installations WHERE tenant_id = :id")
+                .param("id", tenantId).query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM tenant_memberships WHERE tenant_id = :id AND role = 'OWNER'")
+                .param("id", tenantId).query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM tenant_repositories WHERE tenant_id = :id")
+                .param("id", tenantId).query(Long.class).single()).isZero();
+    }
+
+    @Test
     void concurrentStateCreationKeepsOnlyConfiguredActiveStatesPerUser() throws Exception {
         ApplicationUser user = user("state-flood-target");
         int callers = 12;
@@ -130,6 +148,35 @@ class GitHubOwnershipBootstrapPersistenceIntegrationTest {
                     GitHubOwnershipBootstrapStore.MembershipBindingResult.ALREADY_MEMBER);
         }
         assertThat(jdbc.sql("SELECT count(*) FROM tenant_memberships").query(Long.class).single()).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentVerifiedPersonalInstallationProvisioningConverges() throws Exception {
+        ApplicationUser user = user("concurrent-installation-owner");
+        int callers = 8;
+        CountDownLatch ready = new CountDownLatch(callers);
+        CountDownLatch go = new CountDownLatch(1);
+        try (var executor = Executors.newFixedThreadPool(callers)) {
+            var futures = java.util.stream.IntStream.range(0, callers).mapToObj(index -> executor.submit(() -> {
+                ready.countDown();
+                go.await();
+                return bootstrap.provisionPersonalInstallationOwner(654, user.id(), NOW);
+            })).toList();
+            ready.await();
+            go.countDown();
+            for (var future : futures) {
+                assertThat(future.get()).isIn(
+                        GitHubOwnershipBootstrapStore.MembershipBindingResult.CREATED,
+                        GitHubOwnershipBootstrapStore.MembershipBindingResult.ALREADY_MEMBER);
+            }
+        }
+
+        assertThat(jdbc.sql("SELECT count(*) FROM github_installations WHERE github_installation_id = 654")
+                .query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM tenant_memberships")
+                .query(Long.class).single()).isEqualTo(1);
+        assertThat(jdbc.sql("SELECT count(*) FROM tenants")
+                .query(Long.class).single()).isEqualTo(1);
     }
 
     private ApplicationUser user(String subject) {
