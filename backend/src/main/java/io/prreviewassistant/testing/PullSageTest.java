@@ -2,12 +2,15 @@ package io.prreviewassistant.testing;
 
 import java.util.Map;
 
-public String findUsername(Map<Long, String> users, Long id) {
-    String username = users.get(id);
+public class PullSageTest {
 
-    if (username == null) {
-        throw new IllegalArgumentException("User not found");
+    public String findUsername(Map<Long, String> users, Long id) {
+        String username = users.get(id);
+
+        if (username == null) {
+            throw new IllegalArgumentException("User not found");
+        }
+
+        return username.toUpperCase();
     }
-
-    return username.toUpperCase();
 }
