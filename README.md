@@ -51,6 +51,14 @@ The dashboard is implemented with Next.js, React, and TypeScript. It provides au
 
 Authentication is handled through Auth0. Access tokens used to communicate with the Spring backend remain server-side.
 
+![PullSage authentication through Auth0 Universal Login](docs/assets/auth0-login.png)
+
+The authenticated dashboard exposes durable review history and tenant-scoped usage without sending backend credentials to the browser.
+
+![PullSage review history dashboard](docs/assets/pullsage-review-history.png)
+
+![PullSage review-analysis quota dashboard](docs/assets/pullsage-usage-quota.png)
+
 ### Backend
 
 The core API and review pipeline are implemented with Java and Spring Boot. The backend is responsible for:
@@ -149,6 +157,10 @@ The application currently runs on Render with:
 - Environment-based secret configuration
 - PostgreSQL persistence
 - Health and readiness endpoints
+
+Production diagnostics use bounded structured events rather than source code, prompts, credentials, or provider responses.
+
+![Structured PullSage backend events in Render](docs/assets/render-structured-logs.png)
 
 ## CI/CD
 
