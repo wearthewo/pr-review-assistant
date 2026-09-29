@@ -287,6 +287,59 @@ test("every transient dashboard retry performs a fresh uncached backend request"
   ]);
 });
 
+test("dashboard outbound-attempt diagnostics are bounded and omit credentials and response content", async () => {
+  const token = "diagnostic-token-must-not-appear";
+  const bodySecret = "response-secret-must-not-appear";
+  const diagnostics: unknown[] = [];
+  const url = new URL("https://api.pullsage.com/api/dashboard/session?query-secret=must-not-appear");
+
+  await assert.rejects(requestDashboardSession(url, token,
+    async () => new Response(bodySecret, { status: 503 }),
+    () => undefined,
+    (diagnostic) => diagnostics.push(diagnostic)),
+  (error: DashboardSessionError) => error.kind === "BACKEND_STARTING");
+
+  assert.equal(diagnostics.length, 1);
+  assert.deepEqual(diagnostics[0], {
+    targetOrigin: "https://api.pullsage.com",
+    targetHost: "api.pullsage.com",
+    pathname: "/api/dashboard/session",
+    method: "GET",
+    startedAt: (diagnostics[0] as { startedAt: string }).startedAt,
+    elapsedMs: (diagnostics[0] as { elapsedMs: number }).elapsedMs,
+    upstreamStatus: 503,
+    abortFired: false,
+    errorName: null,
+    failure: "HTTP_503",
+  });
+  assert.match((diagnostics[0] as { startedAt: string }).startedAt,
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  assert.ok((diagnostics[0] as { elapsedMs: number }).elapsedMs >= 0);
+  assert.doesNotMatch(JSON.stringify(diagnostics),
+    /diagnostic-token|response-secret|query-secret|Authorization|cookie/i);
+});
+
+test("dashboard network diagnostics expose only an allowlisted error name and safe transport code", async () => {
+  const diagnostics: unknown[] = [];
+  const networkError = new TypeError("message-with-sensitive-upstream-detail", {
+    cause: { code: "ENOTFOUND", hostname: "sensitive-host-detail" },
+  });
+
+  await assert.rejects(requestDashboardSession(
+    new URL("https://api.pullsage.com/api/dashboard/session"),
+    "server-only-token",
+    async () => { throw networkError; },
+    () => undefined,
+    (diagnostic) => diagnostics.push(diagnostic)),
+  (error: DashboardSessionError) => error.kind === "BACKEND_STARTING");
+
+  assert.equal(diagnostics.length, 1);
+  const serialized = JSON.stringify(diagnostics[0]);
+  assert.match(serialized, /"errorName":"TypeError:ENOTFOUND"/);
+  assert.match(serialized, /"failure":"NETWORK_ERROR"/);
+  assert.doesNotMatch(serialized, /message-with-sensitive|sensitive-host|server-only-token/);
+});
+
 test("dashboard session cold-start failures are recoverable but auth, other HTTP, and malformed responses are terminal", async () => {
   const url = new URL("https://backend.example/api/dashboard/session");
   const cases: readonly [fetchImplementation: typeof fetch, expected: string][] = [
