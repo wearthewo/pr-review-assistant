@@ -36,6 +36,9 @@ export type DashboardBackendFailure =
   | "HTTP_401"
   | "HTTP_403"
   | "HTTP_4XX"
+  | "HTTP_502"
+  | "HTTP_503"
+  | "HTTP_504"
   | "HTTP_5XX"
   | "MALFORMED_RESPONSE";
 
@@ -103,6 +106,8 @@ export async function requestDashboardSession(
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${token}`,
+        "Cache-Control": "no-cache, no-store",
+        Pragma: "no-cache",
       },
       cache: "no-store",
       redirect: "error",
@@ -125,7 +130,7 @@ export async function requestDashboardSession(
     throw new DashboardSessionError("AUTHORIZATION_FAILED");
   }
   if (response.status === 502 || response.status === 503 || response.status === 504) {
-    reportFailure("HTTP_5XX");
+    reportFailure(`HTTP_${response.status}` as "HTTP_502" | "HTTP_503" | "HTTP_504");
     throw new DashboardSessionError("BACKEND_STARTING");
   }
   if (!response.ok) {

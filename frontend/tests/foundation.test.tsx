@@ -202,13 +202,20 @@ test("authenticated dashboard passes bearer token only through server callback",
 test("backend request uses bearer server side and strictly validates its DTO", async () => {
   const token = "never-render-this-token";
   let authorization = "";
+  let cacheMode: RequestCache | undefined;
+  let requestCacheControl = "";
   const fetchImplementation: typeof fetch = async (_input, init) => {
-    authorization = new Headers(init?.headers).get("Authorization") ?? "";
+    const headers = new Headers(init?.headers);
+    authorization = headers.get("Authorization") ?? "";
+    requestCacheControl = headers.get("Cache-Control") ?? "";
+    cacheMode = init?.cache;
     return new Response(JSON.stringify({ applicationUserId: USER_ID,
       memberships: [{ tenantId: TENANT_ID, role: "OWNER" }], onboardingRequired: false }), { status: 200 });
   };
   const session = await requestDashboardSession(new URL("https://backend.example/api/dashboard/session"), token, fetchImplementation);
   assert.equal(authorization, `Bearer ${token}`);
+  assert.equal(cacheMode, "no-store");
+  assert.equal(requestCacheControl, "no-cache, no-store");
   assert.deepEqual(session.memberships, [{ tenantId: TENANT_ID, role: "OWNER" }]);
   assert.doesNotMatch(JSON.stringify(session), /never-render-this-token/);
 });
@@ -233,7 +240,10 @@ test("dashboard backend diagnostics distinguish bounded failure classes", async 
     [async () => new Response(null, { status: 401 }), "HTTP_401"],
     [async () => new Response(null, { status: 403 }), "HTTP_403"],
     [async () => new Response(null, { status: 422 }), "HTTP_4XX"],
-    [async () => new Response(null, { status: 503 }), "HTTP_5XX"],
+    [async () => new Response(null, { status: 502 }), "HTTP_502"],
+    [async () => new Response(null, { status: 503 }), "HTTP_503"],
+    [async () => new Response(null, { status: 504 }), "HTTP_504"],
+    [async () => new Response(null, { status: 500 }), "HTTP_5XX"],
     [async () => new Response("not-json", { status: 200 }), "MALFORMED_RESPONSE"],
   ];
 
@@ -243,6 +253,38 @@ test("dashboard backend diagnostics distinguish bounded failure classes", async 
       (failure) => diagnostics.push(failure)));
     assert.deepEqual(diagnostics, [expected]);
   }
+});
+
+test("every transient dashboard retry performs a fresh uncached backend request", async () => {
+  const url = new URL("https://api.pullsage.com/api/dashboard/session");
+  const statuses = [503, 504, 200];
+  const requests: { url: string; cache: RequestCache | undefined; cacheControl: string }[] = [];
+  const fetchImplementation: typeof fetch = async (input, init) => {
+    const status = statuses.shift();
+    assert.notEqual(status, undefined);
+    requests.push({
+      url: input.toString(),
+      cache: init?.cache,
+      cacheControl: new Headers(init?.headers).get("Cache-Control") ?? "",
+    });
+    if (status !== 200) return new Response(null, { status });
+    return new Response(JSON.stringify({ applicationUserId: USER_ID,
+      memberships: [], onboardingRequired: true }), { status: 200 });
+  };
+
+  await assert.rejects(requestDashboardSession(url, "server-only-token", fetchImplementation),
+    (error: DashboardSessionError) => error.kind === "BACKEND_STARTING");
+  await assert.rejects(requestDashboardSession(url, "server-only-token", fetchImplementation),
+    (error: DashboardSessionError) => error.kind === "BACKEND_STARTING");
+  const session = await requestDashboardSession(url, "server-only-token", fetchImplementation);
+
+  assert.equal(session.onboardingRequired, true);
+  assert.equal(requests.length, 3);
+  assert.deepEqual(requests.map(({ url: requestedUrl }) => requestedUrl), [url.href, url.href, url.href]);
+  assert.deepEqual(requests.map(({ cache }) => cache), ["no-store", "no-store", "no-store"]);
+  assert.deepEqual(requests.map(({ cacheControl }) => cacheControl), [
+    "no-cache, no-store", "no-cache, no-store", "no-cache, no-store",
+  ]);
 });
 
 test("dashboard session cold-start failures are recoverable but auth, other HTTP, and malformed responses are terminal", async () => {
@@ -960,6 +1002,17 @@ test("server-only boundaries and Auth0 session protections are configured", () =
   assert.match(authBoundary, /sameSite: "lax"/);
   assert.match(authBoundary, /secure: environment\.production/);
   assert.match(authBoundary, /user: \{ sub: session\.user\.sub \}/);
+});
+
+test("production recovery routing is dynamic and targets the verified custom backend origin", () => {
+  const recoveryRoute = readFileSync(
+    join(frontendRoot, "src/app/api/dashboard/recovery/route.ts"), "utf8");
+  const blueprint = readFileSync(join(frontendRoot, "../render.yaml"), "utf8");
+  assert.match(recoveryRoute, /export const dynamic = "force-dynamic"/);
+  assert.match(recoveryRoute, /export const revalidate = 0/);
+  assert.match(recoveryRoute, /"Cache-Control": "no-store, max-age=0"/);
+  assert.match(blueprint, /key: BACKEND_BASE_URL\s+value: https:\/\/api\.pullsage\.com/);
+  assert.doesNotMatch(blueprint, /key: BACKEND_BASE_URL\s+sync: false/);
 });
 
 test("production source has no browser token storage, raw HTML, or public secrets", () => {
