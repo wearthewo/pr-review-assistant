@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { NextRequest, NextResponse } from "next/server";
 
 import HomePage from "@/app/page";
+import { DashboardRecoveryStarting, DashboardRecoveryUnavailable } from "@/components/dashboard-recovery";
 import { DashboardView } from "@/components/dashboard-view";
 import { DisplayText } from "@/components/display-text";
 import { RepositoriesView, RepositoryList } from "@/components/repositories-view";
@@ -13,6 +14,14 @@ import { ReviewHistory, ReviewsView } from "@/components/reviews-view";
 import { UsagePanel, UsageView } from "@/components/usage-view";
 import { resolveAuthEnvironment } from "@/lib/auth-environment-validation";
 import { resolveBackendOrigin } from "@/lib/backend-origin-validation";
+import {
+  DASHBOARD_RECOVERY_DELAYS_MS,
+  DASHBOARD_RECOVERY_REQUEST_TIMEOUT_MS,
+  dashboardRecoveryStatus,
+  probeDashboardRecovery,
+  startDashboardRecovery,
+  type DashboardRecoveryProbeResult,
+} from "@/lib/dashboard-recovery-core";
 import {
   DashboardSessionError,
   loadDashboardStateWith,
@@ -234,6 +243,160 @@ test("dashboard backend diagnostics distinguish bounded failure classes", async 
       (failure) => diagnostics.push(failure)));
     assert.deepEqual(diagnostics, [expected]);
   }
+});
+
+test("dashboard session cold-start failures are recoverable but auth, other HTTP, and malformed responses are terminal", async () => {
+  const url = new URL("https://backend.example/api/dashboard/session");
+  const cases: readonly [fetchImplementation: typeof fetch, expected: string][] = [
+    [async () => { throw new TypeError("connect failed"); }, "BACKEND_STARTING"],
+    [async () => { throw new DOMException("timed out", "TimeoutError"); }, "BACKEND_STARTING"],
+    [async () => new Response(null, { status: 502 }), "BACKEND_STARTING"],
+    [async () => new Response(null, { status: 503 }), "BACKEND_STARTING"],
+    [async () => new Response(null, { status: 504 }), "BACKEND_STARTING"],
+    [async () => new Response(null, { status: 401 }), "AUTHORIZATION_FAILED"],
+    [async () => new Response(null, { status: 403 }), "AUTHORIZATION_FAILED"],
+    [async () => new Response(null, { status: 422 }), "BACKEND_UNAVAILABLE"],
+    [async () => new Response(null, { status: 500 }), "BACKEND_UNAVAILABLE"],
+    [async () => new Response("not-json", { status: 200 }), "BACKEND_RESPONSE_INVALID"],
+  ];
+
+  for (const [fetchImplementation, expected] of cases) {
+    await assert.rejects(requestDashboardSession(url, "server-only-token", fetchImplementation),
+      (error: DashboardSessionError) => error.kind === expected);
+  }
+});
+
+test("dashboard recovery uses the bounded 150-second schedule and succeeds after transient failures", async () => {
+  assert.equal(DASHBOARD_RECOVERY_DELAYS_MS.reduce((total, delay) => total + delay, 0), 150_000);
+  const outcomes: DashboardRecoveryProbeResult[] = ["RETRYABLE", "RETRYABLE", "READY"];
+  const delays: number[] = [];
+  let ready = 0;
+  let exhausted = 0;
+  const recovery = startDashboardRecovery({
+    delays: DASHBOARD_RECOVERY_DELAYS_MS,
+    wait: async (delay) => { delays.push(delay); },
+    probe: async () => outcomes.shift() ?? "RETRYABLE",
+    onReady: () => { ready += 1; },
+    onTerminal: () => assert.fail("transient recovery must not become terminal"),
+    onExhausted: () => { exhausted += 1; },
+  });
+  await recovery.done;
+  assert.deepEqual(delays, [5_000, 10_000, 15_000]);
+  assert.equal(ready, 1);
+  assert.equal(exhausted, 0);
+});
+
+test("dashboard recovery stops immediately for terminal responses and after success", async () => {
+  for (const outcome of ["TERMINAL", "READY"] as const) {
+    let probes = 0;
+    let terminal = 0;
+    let ready = 0;
+    const recovery = startDashboardRecovery({
+      delays: [1, 1, 1],
+      wait: async () => undefined,
+      probe: async () => { probes += 1; return outcome; },
+      onReady: () => { ready += 1; },
+      onTerminal: () => { terminal += 1; },
+      onExhausted: () => assert.fail("completed recovery must not exhaust"),
+    });
+    await recovery.done;
+    assert.equal(probes, 1);
+    assert.equal(ready, outcome === "READY" ? 1 : 0);
+    assert.equal(terminal, outcome === "TERMINAL" ? 1 : 0);
+  }
+});
+
+test("dashboard recovery exhaustion exposes Try Again and a fresh controller can recover", async () => {
+  let exhausted = 0;
+  const first = startDashboardRecovery({
+    delays: [1, 1],
+    wait: async () => undefined,
+    probe: async () => "RETRYABLE",
+    onReady: () => assert.fail("exhausted sequence cannot be ready"),
+    onTerminal: () => assert.fail("exhausted sequence cannot be terminal"),
+    onExhausted: () => { exhausted += 1; },
+  });
+  await first.done;
+  assert.equal(exhausted, 1);
+  assert.match(renderToStaticMarkup(<DashboardRecoveryUnavailable onRetry={() => undefined} />), /Try again/);
+
+  let ready = 0;
+  const second = startDashboardRecovery({
+    delays: [1],
+    wait: async () => undefined,
+    probe: async () => "READY",
+    onReady: () => { ready += 1; },
+    onTerminal: () => assert.fail("fresh sequence must recover"),
+    onExhausted: () => assert.fail("fresh sequence must not exhaust"),
+  });
+  await second.done;
+  assert.equal(ready, 1);
+});
+
+test("dashboard recovery cancellation aborts pending work without stale callbacks", async () => {
+  const observed: { waitSignal: AbortSignal | null } = { waitSignal: null };
+  let callbackCount = 0;
+  const recovery = startDashboardRecovery({
+    delays: [5_000],
+    wait: (_delay, signal) => new Promise((resolve) => {
+      observed.waitSignal = signal;
+      signal.addEventListener("abort", () => resolve(), { once: true });
+    }),
+    probe: async () => { callbackCount += 100; return "READY"; },
+    onReady: () => { callbackCount += 1; },
+    onTerminal: () => { callbackCount += 1; },
+    onExhausted: () => { callbackCount += 1; },
+  });
+  recovery.cancel();
+  await recovery.done;
+  assert.equal(observed.waitSignal?.aborted, true);
+  assert.equal(callbackCount, 0);
+});
+
+test("same-origin recovery probe sends no bearer token and classifies only temporary availability responses", async () => {
+  assert.equal(DASHBOARD_RECOVERY_REQUEST_TIMEOUT_MS, 8_000);
+  for (const [status, expected] of [[204, "READY"], [502, "RETRYABLE"], [503, "RETRYABLE"],
+    [504, "RETRYABLE"], [401, "TERMINAL"], [403, "TERMINAL"], [422, "TERMINAL"],
+    [500, "TERMINAL"]] as const) {
+    let authorization: string | null = "not-called";
+    const result = await probeDashboardRecovery(async (input, init) => {
+      assert.equal(input, "/api/dashboard/recovery");
+      authorization = new Headers(init?.headers).get("Authorization");
+      return new Response(null, { status });
+    }, new AbortController().signal);
+    assert.equal(result, expected);
+    assert.equal(authorization, null);
+  }
+  assert.equal(await probeDashboardRecovery(async () => { throw new TypeError("offline"); },
+    new AbortController().signal), "RETRYABLE");
+
+  const timeout = AbortSignal.abort(new DOMException("timed out", "TimeoutError"));
+  assert.equal(await probeDashboardRecovery(async (_input, init) => {
+    assert.equal(init?.signal?.aborted, true);
+    throw init?.signal?.reason;
+  }, new AbortController().signal, timeout), "RETRYABLE");
+});
+
+test("recovery BFF status exposes no dashboard data and preserves terminal distinctions", () => {
+  assert.equal(dashboardRecoveryStatus({ status: "authenticated", applicationUserId: USER_ID,
+    memberships: [], onboardingRequired: true }), 204);
+  assert.equal(dashboardRecoveryStatus({ status: "unauthenticated" }), 401);
+  assert.equal(dashboardRecoveryStatus({ status: "error", kind: "BACKEND_STARTING" }), 503);
+  assert.equal(dashboardRecoveryStatus({ status: "error", kind: "AUTHORIZATION_FAILED" }), 409);
+  assert.equal(dashboardRecoveryStatus({ status: "error", kind: "BACKEND_RESPONSE_INVALID" }), 409);
+});
+
+test("startup UI is calm, accessible, and cannot start GitHub connection until recovery succeeds", () => {
+  const starting = renderToStaticMarkup(<DashboardRecoveryStarting />);
+  assert.match(starting, /Starting PullSage/);
+  assert.match(starting, /aria-live="polite"/);
+  assert.match(starting, /aria-busy="true"/);
+  assert.match(starting, /keep this page open/);
+  assert.doesNotMatch(starting, /Connect GitHub|Render|api\.pullsage\.com|percentage/);
+
+  const recovered = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
+    applicationUserId: USER_ID, memberships: [], onboardingRequired: true }} />);
+  assert.match(recovered, /Connect GitHub/);
 });
 
 test("dashboard backend diagnostics never contain credentials or backend content", async () => {
@@ -758,7 +921,7 @@ test("network timeout classification does not expose request credentials", async
   await assert.rejects(
     requestDashboardSession(new URL("https://backend.example/api/dashboard/session"), secret,
       async () => { throw new DOMException("operation stopped", "TimeoutError"); }),
-    (error: DashboardSessionError) => error.kind === "BACKEND_TIMEOUT" && !error.toString().includes(secret),
+    (error: DashboardSessionError) => error.kind === "BACKEND_STARTING" && !error.toString().includes(secret),
   );
 });
 

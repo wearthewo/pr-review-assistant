@@ -25,6 +25,7 @@ export interface UnauthenticatedDashboardSession {
 export type DashboardFailureKind =
   | "AUTHORIZATION_FAILED"
   | "BACKEND_RESPONSE_INVALID"
+  | "BACKEND_STARTING"
   | "BACKEND_TIMEOUT"
   | "BACKEND_UNAVAILABLE"
   | "SESSION_UNAVAILABLE";
@@ -110,10 +111,10 @@ export async function requestDashboardSession(
   } catch (error) {
     if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
       reportFailure("TIMEOUT");
-      throw new DashboardSessionError("BACKEND_TIMEOUT");
+      throw new DashboardSessionError("BACKEND_STARTING");
     }
     reportFailure("NETWORK_ERROR");
-    throw new DashboardSessionError("BACKEND_UNAVAILABLE");
+    throw new DashboardSessionError("BACKEND_STARTING");
   }
   if (response.status === 401) {
     reportFailure("HTTP_401");
@@ -122,6 +123,10 @@ export async function requestDashboardSession(
   if (response.status === 403) {
     reportFailure("HTTP_403");
     throw new DashboardSessionError("AUTHORIZATION_FAILED");
+  }
+  if (response.status === 502 || response.status === 503 || response.status === 504) {
+    reportFailure("HTTP_5XX");
+    throw new DashboardSessionError("BACKEND_STARTING");
   }
   if (!response.ok) {
     reportFailure(response.status >= 500 ? "HTTP_5XX" : "HTTP_4XX");

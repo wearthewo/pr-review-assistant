@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { DashboardRecoveryStarting } from "@/components/dashboard-recovery";
 import { DashboardView } from "@/components/dashboard-view";
 import { RepositoriesView } from "@/components/repositories-view";
 import { ReviewsView } from "@/components/reviews-view";
@@ -18,7 +19,7 @@ const TENANT_A = "11111111-1111-4111-8111-111111111111";
 const TENANT_B = "22222222-2222-4222-8222-222222222222";
 const USER_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
-type Actor = "owner" | "member" | "multi" | "unbound";
+type Actor = "owner" | "member" | "multi" | "unbound" | "starting";
 
 void startFixtureServer();
 
@@ -33,7 +34,9 @@ async function startFixtureServer() {
     const actor = readActor(request);
     const dashboard = dashboardState(actor);
     const requestedTenant = singleParameter(url, "tenant");
-    const markup = renderRoute(url, dashboard, requestedTenant);
+    const markup = actor === "starting"
+      ? renderToStaticMarkup(<DashboardRecoveryStarting />)
+      : renderRoute(url, dashboard, requestedTenant);
     const nonce = randomBytes(18).toString("base64");
     response.statusCode = 200;
     response.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -99,6 +102,9 @@ function invalidTenantRouteView(pathname: string, dashboard: AuthenticatedDashbo
 }
 
 function dashboardState(actor: Actor): DashboardState {
+  if (actor === "starting") {
+    return { status: "error", kind: "BACKEND_STARTING" };
+  }
   if (actor === "unbound") {
     return { status: "authenticated", applicationUserId: USER_ID, memberships: [], onboardingRequired: true };
   }
@@ -110,7 +116,7 @@ function dashboardState(actor: Actor): DashboardState {
 }
 
 function readActor(request: IncomingMessage): Actor {
-  const match = /(?:^|;\s*)m13g_actor=(owner|member|multi|unbound)(?:;|$)/.exec(request.headers.cookie ?? "");
+  const match = /(?:^|;\s*)m13g_actor=(owner|member|multi|unbound|starting)(?:;|$)/.exec(request.headers.cookie ?? "");
   return (match?.[1] as Actor | undefined) ?? "owner";
 }
 

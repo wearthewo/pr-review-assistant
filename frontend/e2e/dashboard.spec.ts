@@ -64,6 +64,17 @@ test("unbound users cannot bypass onboarding through direct child routes", async
   }
 });
 
+test("backend startup is calm and blocks GitHub connection until dashboard recovery", async ({ page, context }) => {
+  await actor(context, "starting");
+  await page.goto(`${FIXTURE}/dashboard`);
+  await expect(page.getByRole("heading", { name: "Starting PullSage" })).toBeVisible();
+  await expect(page.getByText("Attempting to reconnect")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect GitHub" })).toHaveCount(0);
+  await expect(page.getByRole("main")).toHaveAttribute("aria-live", "polite");
+  await expect(page.getByRole("main")).toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("body")).not.toContainText("Render");
+});
+
 for (const role of ["owner", "member"] as const) {
   test(`${role.toUpperCase()} can read the coherent read-only dashboard`, async ({ page, context }) => {
     await actor(context, role);
@@ -150,7 +161,7 @@ test("navigation, progress, focus structure and responsive layout remain accessi
   }
 });
 
-async function actor(context: BrowserContext, value: "owner" | "member" | "multi" | "unbound") {
+async function actor(context: BrowserContext, value: "owner" | "member" | "multi" | "unbound" | "starting") {
   await context.addCookies([{ name: "m13g_actor", value, url: FIXTURE, httpOnly: true, sameSite: "Lax" }]);
 }
 
