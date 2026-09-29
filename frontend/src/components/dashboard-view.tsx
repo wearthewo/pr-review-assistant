@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { DashboardRecovery } from "@/components/dashboard-recovery";
 import type { DashboardFailureKind, DashboardState } from "@/lib/dashboard-session-core";
 import { selectAuthorizedTenant } from "@/lib/dashboard-selection";
 
@@ -27,6 +28,9 @@ export function DashboardView({
     return <UnauthenticatedState />;
   }
   if (state.status === "error") {
+    if (state.kind === "BACKEND_STARTING") {
+      return <DashboardRecovery />;
+    }
     return <DashboardError kind={state.kind} />;
   }
   if (state.onboardingRequired) {
@@ -270,6 +274,7 @@ function DashboardError({ kind }: Readonly<{ kind: DashboardFailureKind }>) {
   const content: Record<DashboardFailureKind, readonly [string, string]> = {
     AUTHORIZATION_FAILED: ["Your dashboard session could not be authorized.", "Sign in again to refresh your protected session."],
     BACKEND_RESPONSE_INVALID: ["The dashboard received an invalid response.", "No unverified data was displayed. Try again shortly."],
+    BACKEND_STARTING: ["PullSage is starting.", "This temporary state is handled automatically."],
     BACKEND_TIMEOUT: ["The dashboard took too long to respond.", "The request was stopped safely. Try again shortly."],
     BACKEND_UNAVAILABLE: ["The dashboard service is temporarily unavailable.", "Your account data remains protected. Try again shortly."],
     SESSION_UNAVAILABLE: ["Your protected session is unavailable.", "Sign in again to continue."],
