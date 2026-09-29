@@ -27,7 +27,7 @@ Each build context has a `.dockerignore` that excludes build output, dependency 
 
 Both services bind `0.0.0.0:${PORT}`; the Blueprint fixes `PORT=10000`, which is Render's conventional private HTTP port. Render terminates public TLS. `APP_BASE_URL`, GitHub's OAuth callback, Auth0 callbacks/logout origins, and `BACKEND_BASE_URL` must use their final public HTTPS origins.
 
-The frontend calls the backend from Server Components with a server-only bearer token. M20 deliberately retains the existing production requirement that `BACKEND_BASE_URL` is HTTPS instead of weakening it for plaintext private-network HTTP. Browsers do not call Spring directly, and Spring CORS remains disabled. The backend is public only because GitHub webhooks and authenticated dashboard APIs require it; Spring Security still denies unspecified routes.
+The frontend calls the backend from Server Components with a server-only bearer token. M20 deliberately retains the existing production requirement that `BACKEND_BASE_URL` is HTTPS instead of weakening it for plaintext private-network HTTP. The Render Blueprint pins this origin to the verified backend custom domain, `https://api.pullsage.com`; dashboard recovery uses the same origin and does not fall back to a separately configured Render subdomain. Browsers do not call Spring directly, and Spring CORS remains disabled. The backend is public only because GitHub webhooks and authenticated dashboard APIs require it; Spring Security still denies unspecified routes.
 
 The application does not derive tenant authority, OAuth destinations, or provider callbacks from forwarded host headers. Provider callbacks are explicit configuration, so M20 does not enable broad forwarded-header trust. If custom domains are added, update `APP_BASE_URL`, `BACKEND_BASE_URL`, Auth0 allowed callback/logout/web origins, the GitHub callback, and the GitHub webhook URL together, then verify redirects before removing an old domain.
 
@@ -59,7 +59,7 @@ The application does not derive tenant authority, OAuth destinations, or provide
 | backend | `REVIEW_PUBLICATION_LEASE_DURATION` | server config | yes | publication recovery lease; `3m` | Blueprint |
 | backend | `REVIEW_AI_ENABLED` | server config | yes | enables accepted OpenAI adapter; `true` | Blueprint |
 | frontend | `PORT` | platform config | yes | standalone server listen port; `10000` | Blueprint/Render |
-| frontend | `BACKEND_BASE_URL` | server config | yes | final backend public HTTPS origin; `https://api.example.invalid` | operator |
+| frontend | `BACKEND_BASE_URL` | server config | yes | verified backend public HTTPS origin; `https://api.pullsage.com` | Blueprint |
 | frontend | `AUTH0_DOMAIN` | public config | yes | Auth0 tenant hostname; `tenant.example.invalid` | operator/Auth0 |
 | frontend | `AUTH0_CLIENT_ID` | public config | yes | Auth0 application identifier; provider supplied | operator/Auth0 |
 | frontend | `AUTH0_CLIENT_SECRET` | secret | yes | Auth0 application credential; no example value | operator/Auth0 |

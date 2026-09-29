@@ -96,7 +96,7 @@ services:
       - key: PORT
         value: "10000"
       - key: BACKEND_BASE_URL
-        sync: false
+        value: https://api.pullsage.com
       - key: AUTH0_DOMAIN
         sync: false
       - key: AUTH0_CLIENT_ID
