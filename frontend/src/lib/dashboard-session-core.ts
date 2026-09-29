@@ -44,6 +44,21 @@ export type DashboardBackendFailure =
 
 export type DashboardBackendFailureReporter = (failure: DashboardBackendFailure) => void;
 
+export interface DashboardBackendAttemptDiagnostic {
+  targetOrigin: string;
+  targetHost: string;
+  pathname: string;
+  method: "GET";
+  startedAt: string;
+  elapsedMs: number;
+  upstreamStatus: number | null;
+  abortFired: boolean;
+  errorName: string | null;
+  failure: DashboardBackendFailure | "NONE";
+}
+
+export type DashboardBackendAttemptReporter = (diagnostic: DashboardBackendAttemptDiagnostic) => void;
+
 export interface FailedDashboardSession {
   status: "error";
   kind: DashboardFailureKind;
@@ -95,10 +110,35 @@ export async function requestDashboardSession(
   token: string,
   fetchImplementation: typeof fetch,
   reportFailure: DashboardBackendFailureReporter = () => undefined,
+  reportAttempt: DashboardBackendAttemptReporter = () => undefined,
 ): Promise<AuthenticatedDashboardSession> {
   if (!token) {
     throw new DashboardSessionError("SESSION_UNAVAILABLE");
   }
+  const startedAtMillis = Date.now();
+  const startedAt = new Date(startedAtMillis).toISOString();
+  const timeoutSignal = AbortSignal.timeout(5_000);
+  let attemptFinished = false;
+  const finishAttempt = (
+    upstreamStatus: number | null,
+    failure: DashboardBackendFailure | "NONE",
+    errorName: string | null = null,
+  ) => {
+    if (attemptFinished) return;
+    attemptFinished = true;
+    reportAttempt({
+      targetOrigin: url.origin,
+      targetHost: url.host,
+      pathname: url.pathname,
+      method: "GET",
+      startedAt,
+      elapsedMs: Math.max(0, Date.now() - startedAtMillis),
+      upstreamStatus,
+      abortFired: timeoutSignal.aborted,
+      errorName,
+      failure,
+    });
+  };
   let response: Response;
   try {
     response = await fetchImplementation(url, {
@@ -111,30 +151,38 @@ export async function requestDashboardSession(
       },
       cache: "no-store",
       redirect: "error",
-      signal: AbortSignal.timeout(5_000),
+      signal: timeoutSignal,
     });
   } catch (error) {
     if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError")) {
       reportFailure("TIMEOUT");
+      finishAttempt(null, "TIMEOUT", safeNetworkErrorName(error));
       throw new DashboardSessionError("BACKEND_STARTING");
     }
     reportFailure("NETWORK_ERROR");
+    finishAttempt(null, "NETWORK_ERROR", safeNetworkErrorName(error));
     throw new DashboardSessionError("BACKEND_STARTING");
   }
   if (response.status === 401) {
     reportFailure("HTTP_401");
+    finishAttempt(response.status, "HTTP_401");
     throw new DashboardSessionError("AUTHORIZATION_FAILED");
   }
   if (response.status === 403) {
     reportFailure("HTTP_403");
+    finishAttempt(response.status, "HTTP_403");
     throw new DashboardSessionError("AUTHORIZATION_FAILED");
   }
   if (response.status === 502 || response.status === 503 || response.status === 504) {
-    reportFailure(`HTTP_${response.status}` as "HTTP_502" | "HTTP_503" | "HTTP_504");
+    const failure = `HTTP_${response.status}` as "HTTP_502" | "HTTP_503" | "HTTP_504";
+    reportFailure(failure);
+    finishAttempt(response.status, failure);
     throw new DashboardSessionError("BACKEND_STARTING");
   }
   if (!response.ok) {
-    reportFailure(response.status >= 500 ? "HTTP_5XX" : "HTTP_4XX");
+    const failure = response.status >= 500 ? "HTTP_5XX" : "HTTP_4XX";
+    reportFailure(failure);
+    finishAttempt(response.status, failure);
     throw new DashboardSessionError("BACKEND_UNAVAILABLE");
   }
   try {
@@ -147,13 +195,41 @@ export async function requestDashboardSession(
     } catch {
       throw new DashboardSessionError("BACKEND_RESPONSE_INVALID");
     }
-    return validateSession(value);
+    const session = validateSession(value);
+    finishAttempt(response.status, "NONE");
+    return session;
   } catch (error) {
     if (error instanceof DashboardSessionError && error.kind === "BACKEND_RESPONSE_INVALID") {
       reportFailure("MALFORMED_RESPONSE");
+      finishAttempt(response.status, "MALFORMED_RESPONSE");
+    } else {
+      finishAttempt(response.status, "NETWORK_ERROR", safeNetworkErrorName(error));
     }
     throw error;
   }
+}
+
+const SAFE_NETWORK_ERROR_CODES = new Set([
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ECONNRESET",
+  "ENETUNREACH",
+  "ENOTFOUND",
+  "ETIMEDOUT",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_SOCKET",
+]);
+
+function safeNetworkErrorName(error: unknown): string {
+  const name = error instanceof Error && /^[A-Za-z][A-Za-z0-9]*$/.test(error.name)
+    ? error.name
+    : "UnknownError";
+  const cause = error instanceof Error ? error.cause : undefined;
+  const code = isObject(cause) && typeof cause.code === "string" && SAFE_NETWORK_ERROR_CODES.has(cause.code)
+    ? cause.code
+    : null;
+  return code === null ? name : `${name}:${code}`;
 }
 
 function validateSession(value: unknown): AuthenticatedDashboardSession {

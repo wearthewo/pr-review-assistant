@@ -40,5 +40,19 @@ export async function fetchDashboardSession(
         event: "dashboard_backend_request_failed",
         failure,
       }));
+    }, (diagnostic) => {
+      console.info(JSON.stringify({
+        event: "dashboard_backend_attempt_finished",
+        target_origin: diagnostic.targetOrigin,
+        target_host: diagnostic.targetHost,
+        pathname: diagnostic.pathname,
+        method: diagnostic.method,
+        started_at: diagnostic.startedAt,
+        elapsed_ms: diagnostic.elapsedMs,
+        upstream_status: diagnostic.upstreamStatus,
+        abort_fired: diagnostic.abortFired,
+        error_name: diagnostic.errorName,
+        failure: diagnostic.failure,
+      }));
     });
 }
