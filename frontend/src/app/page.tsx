@@ -4,11 +4,11 @@ export default function HomePage() {
   return (
     <main id="main-content" className="page-shell">
       <nav className="topbar" aria-label="Primary navigation">
-        <Link className="brand" href="/" aria-label="Review Assistant home">
-          <span className="brand-mark" aria-hidden="true">RA</span>
-          <span>Review Assistant</span>
+        <Link className="brand" href="/" aria-label="PullSage home">
+          <span className="brand-mark" aria-hidden="true">PS</span>
+          <span>PullSage</span>
         </Link>
-        <Link className="text-link" href="/dashboard">Dashboard foundation</Link>
+        <Link className="button button-secondary button-compact" href="/dashboard">Open dashboard</Link>
       </nav>
 
       <section className="hero" aria-labelledby="hero-title">

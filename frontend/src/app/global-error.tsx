@@ -6,7 +6,7 @@ export default function GlobalError({ reset }: Readonly<{ error: Error & { diges
       <body>
         <main id="main-content" className="centered-state">
           <p className="eyebrow">Application interrupted</p>
-          <h1>Review Assistant could not load.</h1>
+          <h1>PullSage could not load.</h1>
           <p>No sensitive error detail is shown here.</p>
           <button className="button button-primary" type="button" onClick={reset}>Try again</button>
         </main>

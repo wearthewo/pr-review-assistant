@@ -105,8 +105,8 @@ test("multi-tenant selection keeps one authorized workspace across navigation", 
     await expect(page.locator("body")).not.toContainText("#101001");
   }
   await page.goto(`${FIXTURE}/dashboard?tenant=${TENANT_B}`);
-  if (page.viewportSize()!.width <= 720) {
-    await page.getByText("Navigation", { exact: true }).click();
+  if (page.viewportSize()!.width <= 900) {
+    await page.getByText("Menu", { exact: true }).click();
   }
   await visibleNavigation(page).getByRole("link", { name: "Repositories" }).click();
   await expect(page).toHaveURL(`${FIXTURE}/dashboard/repositories?tenant=${TENANT_B}`);
@@ -154,10 +154,37 @@ test("navigation, progress, focus structure and responsive layout remain accessi
   await expect(page.locator('a[aria-current="page"]', { hasText: "Usage" }).first()).toBeAttached();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   if (isMobile) {
-    await page.getByText("Navigation", { exact: true }).click();
+    await page.getByText("Menu", { exact: true }).click();
     await expect(page.locator(".mobile-header").getByRole("link", { name: "Repositories" })).toBeVisible();
+    await expect(page.locator(".mobile-header").getByRole("link", { name: "Sign out" }))
+      .toHaveAttribute("href", "/auth/logout");
   } else {
     await expect(page.locator(".sidebar").getByRole("link", { name: "Repositories" })).toBeVisible();
+    await expect(page.locator(".sidebar").getByRole("link", { name: "Sign out" }))
+      .toHaveAttribute("href", "/auth/logout");
+  }
+});
+
+test("authenticated dashboard remains usable across supported viewport classes", async ({ page, context }) => {
+  await actor(context, "owner");
+  for (const viewport of [
+    { width: 320, height: 700 },
+    { width: 375, height: 740 },
+    { width: 410, height: 820 },
+    { width: 768, height: 900 },
+    { width: 1024, height: 800 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${FIXTURE}/dashboard?tenant=${TENANT_A}`);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    if (viewport.width <= 900) {
+      await page.getByText("Menu", { exact: true }).click();
+      await expect(page.locator(".mobile-header").getByRole("link", { name: "Sign out" })).toBeVisible();
+      await expect(page.locator(".mobile-header").getByRole("link", { name: "Sign out" }))
+        .toHaveAttribute("href", "/auth/logout");
+    } else {
+      await expect(page.locator(".sidebar").getByRole("link", { name: "Sign out" })).toBeVisible();
+    }
   }
 });
 
@@ -166,7 +193,7 @@ async function actor(context: BrowserContext, value: "owner" | "member" | "multi
 }
 
 function visibleNavigation(page: Page) {
-  return page.viewportSize()!.width <= 720
+  return page.viewportSize()!.width <= 900
     ? page.locator(".mobile-header").getByRole("navigation", { name: "Primary" })
     : page.locator(".sidebar").getByRole("navigation", { name: "Primary" });
 }

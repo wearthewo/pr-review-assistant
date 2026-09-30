@@ -51,7 +51,7 @@ export function DashboardRecoveryUnavailable({ onRetry }: Readonly<{ onRetry(): 
       <p className="muted">PullSage could not reconnect within the recovery window. Your account data remains protected.</p>
       <div className="state-actions">
         <button className="button button-primary" type="button" onClick={onRetry}>Try again</button>
-        <a className="text-link" href="/auth/logout">Sign out</a>
+        <a className="button button-signout" href="/auth/logout">Sign out</a>
       </div>
     </main>
   );
