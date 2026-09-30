@@ -6,8 +6,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Review Assistant",
-    template: "%s | Review Assistant",
+    default: "PullSage",
+    template: "%s | PullSage",
   },
   description: "High-confidence pull request review for engineering teams.",
 };

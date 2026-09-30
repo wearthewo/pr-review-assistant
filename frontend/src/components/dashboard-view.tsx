@@ -67,7 +67,7 @@ function UnboundState({ connectionMessage }: Readonly<{ connectionMessage: reado
     <main id="main-content" className="dashboard-gate">
       <div className="gate-header">
         <Brand />
-        <a className="text-link" href="/auth/logout">Sign out</a>
+        <SignOutLink />
       </div>
       <section className="gate-panel onboarding-panel" aria-labelledby="dashboard-title">
         {connectionMessage && <ConnectionNotice message={connectionMessage} />}
@@ -83,7 +83,7 @@ function UnboundState({ connectionMessage }: Readonly<{ connectionMessage: reado
           <span>GitHub authorization verifies eligible personal installations server-side.</span>
         </form>
         <p className="security-note">
-          Review Assistant will never ask you to claim access with a tenant UUID, installation ID,
+          PullSage will never ask you to claim access with a tenant UUID, installation ID,
           repository ID, or organization name.
         </p>
       </section>
@@ -176,15 +176,25 @@ export function DashboardFrame({
           <span className="account-label">Current workspace</span>
           <strong>{tenantLabel(membership.tenantId)}</strong>
           <span className="role-badge">{membership.role}</span>
-          <a className="text-link" href="/auth/logout">Sign out</a>
+          <SignOutLink />
         </div>
       </aside>
       <div className="workspace">
         <header className="mobile-header">
           <Brand />
           <details className="mobile-navigation">
-            <summary>Navigation</summary>
-            <DashboardNavigation activeSection={activeSection} tenantId={membership.tenantId} />
+            <summary>Menu</summary>
+            <div className="mobile-menu-popover">
+              <DashboardNavigation activeSection={activeSection} tenantId={membership.tenantId} />
+              <div className="mobile-account">
+                <span className="account-label">Current workspace</span>
+                <strong>{tenantLabel(membership.tenantId)}</strong>
+                <div className="mobile-account-meta">
+                  <span className="role-badge">{membership.role}</span>
+                  <SignOutLink />
+                </div>
+              </div>
+            </div>
           </details>
         </header>
         <main id="main-content" className="dashboard-main">
@@ -287,7 +297,7 @@ function DashboardError({ kind }: Readonly<{ kind: DashboardFailureKind }>) {
       <p className="muted">{description}</p>
       <div className="state-actions">
         <Link className="button button-primary" href="/dashboard">Try again</Link>
-        <a className="text-link" href="/auth/logout">Sign out</a>
+        <SignOutLink />
       </div>
     </main>
   );
@@ -295,11 +305,15 @@ function DashboardError({ kind }: Readonly<{ kind: DashboardFailureKind }>) {
 
 function Brand() {
   return (
-    <Link className="brand" href="/">
-      <span className="brand-mark" aria-hidden="true">RA</span>
-      <span>Review Assistant</span>
+    <Link className="brand" href="/" aria-label="PullSage home">
+      <span className="brand-mark" aria-hidden="true">PS</span>
+      <span>PullSage</span>
     </Link>
   );
+}
+
+function SignOutLink() {
+  return <a className="button button-signout" href="/auth/logout">Sign out</a>;
 }
 
 export function tenantLabel(tenantId: string): string {

@@ -1035,8 +1035,28 @@ test("desktop and mobile dashboard navigation use accessible native landmarks", 
     onboardingRequired: false }} />);
   assert.match(html, /<aside class="sidebar">/);
   assert.match(html, /<nav class="dashboard-navigation" aria-label="Primary">/);
-  assert.match(html, /<details class="mobile-navigation"><summary>Navigation<\/summary>/);
+  assert.match(html, /<details class="mobile-navigation"><summary>Menu<\/summary>/);
+  assert.match(html, /<div class="mobile-account">/);
+  assert.equal((html.match(/href="\/auth\/logout"/g) ?? []).length, 2);
+  assert.equal((html.match(/class="button button-signout"/g) ?? []).length, 2);
   assert.match(html, /id="main-content"/);
+});
+
+test("authenticated controls use existing secure routes while unauthenticated output remains gated", () => {
+  const authenticated = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
+    applicationUserId: USER_ID, memberships: [{ tenantId: TENANT_ID, role: "OWNER" }],
+    onboardingRequired: false }} />);
+  const unbound = renderToStaticMarkup(<DashboardView state={{ status: "authenticated",
+    applicationUserId: USER_ID, memberships: [], onboardingRequired: true }} />);
+  const unauthenticated = renderToStaticMarkup(<DashboardView state={{ status: "unauthenticated" }} />);
+
+  assert.match(authenticated, /href="\/auth\/logout"/);
+  assert.doesNotMatch(authenticated, /<form[^>]+action="\/auth\/logout"/);
+  assert.match(unbound, /<form[^>]*action="\/github\/connect"[^>]*method="post"/);
+  assert.match(unbound, /<button class="button button-primary" type="submit">Connect GitHub<\/button>/);
+  assert.match(unbound, /href="\/auth\/logout"/);
+  assert.doesNotMatch(unauthenticated, /\/auth\/logout|\/github\/connect|Current workspace/);
+  assert.match(unauthenticated, /href="\/auth\/login"/);
 });
 
 test("server-only boundaries and Auth0 session protections are configured", () => {
